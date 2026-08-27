@@ -328,7 +328,11 @@ async function loadData(showSpinner){
 function uniqueLocations(){
   const s = new Set();
   RECORDS.forEach(r => s.add(r.loc));
-  return Array.from(s).sort();
+  const arr = Array.from(s).sort();
+  const lowPriority = ['Nebraska', 'Unknown'];
+  const primary = arr.filter(l => !lowPriority.includes(l));
+  const secondary = lowPriority.filter(l => arr.includes(l));
+  return [...primary, ...secondary];
 }
 
 function renderStats(){
@@ -356,7 +360,10 @@ function renderFilters(){
   `;
   document.querySelectorAll('.chip').forEach(btn => {
     btn.addEventListener('click', () => {
-      state[btn.dataset.type] = btn.dataset.val;
+      const type = btn.dataset.type;
+      const val = btn.dataset.val;
+      // Toggle off: clicking the already-active filter resets it to "all"
+      state[type] = (state[type] === val && val !== 'all') ? 'all' : val;
       renderFilters(); renderList();
     });
   });
