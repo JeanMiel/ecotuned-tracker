@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Ecotuned CA Tracker</title>
+<style>
+  :root{
+    --bg:#f2f2f7; --card:#ffffff; --text:#1c1c1e; --sub:#6e6e73;
+    --green:#34c759; --red:#ff3b30; --blue:#007aff; --amber:#ff9500;
+    --sep:#e5e5ea; --chip:#e9e9ec;
+    color-scheme: light;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Helvetica,Arial,sans-serif;
+    height:100%; overscroll-behavior-y:none;}
+  #app{display:flex;flex-direction:column;height:100vh;height:100dvh;}
+
+  header{
+    padding:calc(env(safe-area-inset-top) + 10px) 16px 8px;
+    background:rgba(242,242,247,0.92); backdrop-filter:blur(10px);
+    position:sticky; top:0; z-index:20; border-bottom:1px solid var(--sep);
+  }
+  header .titlerow{display:flex; justify-content:space-between; align-items:flex-start;}
+  header h1{font-size:22px;margin:0 0 2px;font-weight:700;letter-spacing:-0.3px;}
+  header .sub{font-size:13px;color:var(--sub);margin:0 0 10px;}
+  #refreshBtn{background:var(--chip); border:none; width:32px;height:32px;border-radius:50%;
+    font-size:15px; color:var(--blue); font-family:inherit; flex-shrink:0;}
+  #refreshBtn.spinning{animation:spin 0.8s linear infinite;}
+  @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+  #syncline{font-size:11px;color:var(--sub);margin:-6px 0 8px;}
+  #syncline.err{color:var(--red);}
+
+  .stats{display:flex; gap:8px; margin-bottom:10px; overflow-x:auto; -webkit-overflow-scrolling:touch;}
+  .stat{flex:1; min-width:74px; background:var(--card); border-radius:12px; padding:8px 10px; text-align:center;}
+  .stat .n{font-size:18px;font-weight:700;}
+  .stat .l{font-size:10.5px;color:var(--sub);text-transform:uppercase;letter-spacing:.3px;}
+
+  .segmented{display:flex; background:var(--chip); border-radius:9px; padding:2px; margin-bottom:8px;}
+  .segmented button{flex:1; border:none; background:transparent; padding:6px 4px; font-size:13px;
+    font-weight:600; color:var(--text); border-radius:7px; font-family:inherit;}
+  .segmented button.active{background:var(--card); box-shadow:0 1px 2px rgba(0,0,0,.15);}
+
+  .searchbar{position:relative; margin-bottom:8px;}
+  .searchbar input{width:100%; border:none; background:var(--chip); border-radius:10px;
+    padding:9px 12px 9px 32px; font-size:15px; font-family:inherit;}
+  .searchbar input:focus{outline:2px solid var(--blue);}
+  .searchbar .icon{position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--sub); font-size:14px;}
+
+  .filters{display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px;}
+  .filters::-webkit-scrollbar{display:none;}
+  .chipgroup{display:flex; gap:6px; flex-shrink:0;}
+  .chip{flex-shrink:0; font-size:12.5px; font-weight:600; padding:5px 11px; border-radius:14px;
+    background:var(--chip); color:var(--text); border:none; white-space:nowrap; font-family:inherit;}
+  .chip.active{background:var(--blue); color:#fff;}
+  .chip.status-up.active{background:var(--green);}
+  .chip.status-down.active{background:var(--red);}
+
+  main{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:10px 16px calc(env(safe-area-inset-bottom) + 16px);}
+  .empty{text-align:center; color:var(--sub); margin-top:60px; font-size:14px;}
+  .loading{text-align:center; color:var(--sub); margin-top:60px; font-size:14px;}
+
+  .card{background:var(--card); border-radius:14px; padding:12px 14px; margin-bottom:10px;
+    box-shadow:0 1px 2px rgba(0,0,0,.06);}
+  .card .row1{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
+  .card .idline{font-size:12px; color:var(--sub); font-weight:600;}
+  .card .bus{font-size:16px; font-weight:700; margin-top:1px;}
+  .pill{font-size:11px; font-weight:700; padding:3px 9px; border-radius:10px; color:#fff; white-space:nowrap;}
+  .pill.up{background:var(--green);}
+  .pill.down{background:var(--red);}
+  .pill.other{background:var(--sub);}
+  .card .meta{font-size:12.5px; color:var(--sub); margin-top:4px;}
+  .card .complaint{font-size:14px; margin-top:6px; line-height:1.35;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+  .card .foot{display:flex; justify-content:space-between; align-items:center; margin-top:8px;}
+  .techs{display:flex; gap:4px;}
+  .tech{width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;font-size:10px;
+    font-weight:700; display:flex; align-items:center; justify-content:center;}
+  .tech.closed-tag{background:var(--sub);}
+  .miles{font-size:11.5px; color:var(--sub);}
+
+  #overlay{position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:40; opacity:0; pointer-events:none; transition:opacity .25s;}
+  #overlay.show{opacity:1; pointer-events:auto;}
+  #sheet{position:fixed; left:0; right:0; bottom:0; max-height:88vh; background:var(--card);
+    border-radius:16px 16px 0 0; z-index:41; transform:translateY(100%); transition:transform .28s cubic-bezier(.32,.72,0,1);
+    display:flex; flex-direction:column; box-shadow:0 -4px 24px rgba(0,0,0,.2);}
+  #sheet.show{transform:translateY(0);}
+  #sheet .handle{width:36px;height:5px;background:#d1d1d6;border-radius:3px;margin:8px auto 0;}
+  #sheet .sheethead{padding:10px 18px 6px; display:flex; justify-content:space-between; align-items:flex-start;}
+  #sheet .sheethead h2{font-size:19px;margin:0;}
+  #sheet .sheethead .subid{font-size:12.5px;color:var(--sub);margin-top:2px;}
+  #sheet .closebtn{background:var(--chip); border:none; width:28px;height:28px;border-radius:50%;
+    font-size:15px; color:var(--sub); font-family:inherit;}
+  #sheetbody{overflow-y:auto; padding:6px 18px calc(env(safe-area-inset-bottom) + 24px); -webkit-overflow-scrolling:touch;}
+  .field{margin-top:14px;}
+  .field .fl{font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--sub); font-weight:700; margin-bottom:3px;}
+  .field .fv{font-size:14.5px; line-height:1.45; white-space:pre-wrap;}
+  .badgerow{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+  .badge{font-size:12px; font-weight:600; padding:4px 10px; border-radius:8px; background:var(--chip);}
+
+  .tip{font-size:11.5px; color:var(--sub); text-align:center; padding:6px 20px 2px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="titlerow">
+      <div>
+        <h1>Ecotuned California</h1>
+        <p class="sub">Fleet Case Tracker</p>
+      </div>
+      <button id="refreshBtn" title="Refresh">&#8635;</button>
+    </div>
+    <div id="syncline">Loading…</div>
+    <div class="stats" id="stats"></div>
+    <div class="segmented" id="segmented">
+      <button data-seg="active" class="active">Active</button>
+      <button data-seg="closed">Closed</button>
+      <button data-seg="all">All</button>
+    </div>
+    <div class="searchbar">
+      <span class="icon">&#128269;</span>
+      <input id="search" type="search" placeholder="Search bus #, customer, case #, issue...">
+    </div>
+    <div class="filters" id="filters"></div>
+  </header>
+  <main id="list"><div class="loading">Loading live data…</div></main>
+  <p class="tip" id="tip">Tap Share &rarr; Add to Home Screen for the full app experience.</p>
+</div>
+
+<div id="overlay"></div>
+<div id="sheet">
+  <div class="handle"></div>
+  <div class="sheethead">
+    <div>
+      <h2 id="sheetTitle"></h2>
+      <div class="subid" id="sheetSub"></div>
+    </div>
+    <button class="closebtn" id="closeSheet">&#10005;</button>
+  </div>
+  <div id="sheetbody"></div>
+</div>
+
+<script>
+const SHEET_ID = "1TKwhZqrbfQqDoQ37ZuKbUXXzJeUjJAaM6J1ZbCjmZeE";
+const GID = "715450010";
+const CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv&gid=" + GID;
+const CACHE_KEY = "ecotuned_tracker_cache_v1";
+
+const TECHS = ['Emigdio','David','Jovanni'];
+const TECH_INIT = {Emigdio:'EF', David:'DF', Jovanni:'JC'};
+
+function norm(s){ return (s||'').toString().trim(); }
+function normLower(s){ return norm(s).toLowerCase(); }
+
+// Minimal RFC4180-ish CSV parser (handles quoted fields, embedded commas/newlines, doubled quotes)
+function parseCSV(text){
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for(let i=0; i<text.length; i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field += '"'; i++; }
+        else { inQuotes = false; }
+      } else field += c;
+    } else {
+      if(c === '"') inQuotes = true;
+      else if(c === ','){ row.push(field); field=''; }
+      else if(c === '\r'){ /* skip */ }
+      else if(c === '\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+      else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+
+function csvToObjects(text){
+  const rows = parseCSV(text).filter(r => r.length > 1 || (r.length===1 && r[0] !== ''));
+  if(rows.length === 0) return [];
+  const headers = rows[0];
+  return rows.slice(1).map(r => {
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = r[i] !== undefined ? r[i] : '');
+    return obj;
+  });
+}
+
+function makeRecord(r){
+  const statusRaw = normLower(r['Status']);
+  let status = 'other';
+  if(statusRaw === 'up') status = 'up';
+  else if(statusRaw === 'down') status = 'down';
+
+  let loc = norm(r['ET Location']);
+  loc = loc ? loc.charAt(0).toUpperCase() + loc.slice(1).toLowerCase() : 'Unknown';
+
+  const techs = TECHS.filter(t => norm(r[t]) !== '');
+  const bucket = normLower(r['Bucket']) === 'active' ? 'active' : 'closed';
+
+  return {
+    date: r['Date'] || '',
+    customer: norm(r['Customer']) || 'Unknown',
+    bus: norm(r['Bus #']) || String.fromCharCode(8212),
+    caseNum: r['Case #'] || '',
+    status, statusLabel: status === 'other' ? (norm(r['Status']) || String.fromCharCode(8212)) : (status.charAt(0).toUpperCase()+status.slice(1)),
+    loc,
+    techs,
+    complaint: norm(r['Initial Complaint']),
+    tasks: norm(r['Tasks']),
+    notes: norm(r['Last update']),
+    mileage: r['Mileage'] || '',
+    caseStatus: norm(r['Case status']),
+    bucket
+  };
+}
+
+let RECORDS = [];
+const state = { seg:'active', search:'', loc:'all', status:'all', tech:'all' };
+
+function buildRecordsFromCsv(text){
+  const objs = csvToObjects(text);
+  const recs = objs.filter(o => norm(o['Bus #']) || norm(o['Customer'])).map(makeRecord);
+  recs.sort((a,b) => (b.date||'').localeCompare(a.date||'') || (String(b.caseNum)).localeCompare(String(a.caseNum)));
+  return recs;
+}
+
+function setSync(msg, isErr){
+  const el = document.getElementById('syncline');
+  el.textContent = msg;
+  el.classList.toggle('err', !!isErr);
+}
+
+async function loadData(showSpinner){
+  const btn = document.getElementById('refreshBtn');
+  if(showSpinner) btn.classList.add('spinning');
+  try{
+    const res = await fetch(CSV_URL, {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    RECORDS = buildRecordsFromCsv(text);
+    localStorage.setItem(CACHE_KEY, JSON.stringify({text, ts: Date.now()}));
+    setSync('Updated ' + new Date().toLocaleString());
+    renderStats(); renderFilters(); renderList();
+  } catch(e){
+    // fall back to cache if we have one and nothing loaded yet
+    if(RECORDS.length === 0){
+      const cached = localStorage.getItem(CACHE_KEY);
+      if(cached){
+        try{
+          const {text, ts} = JSON.parse(cached);
+          RECORDS = buildRecordsFromCsv(text);
+          renderStats(); renderFilters(); renderList();
+          setSync('Offline — showing data from ' + new Date(ts).toLocaleString(), true);
+        } catch(e2){
+          setSync('Could not load data: ' + e.message, true);
+          document.getElementById('list').innerHTML = '<div class="empty">Could not load live data. Check your connection and tap refresh.</div>';
+        }
+      } else {
+        setSync('Could not load data: ' + e.message, true);
+        document.getElementById('list').innerHTML = '<div class="empty">Could not load live data. Check your connection and tap refresh.</div>';
+      }
+    } else {
+      setSync('Refresh failed: ' + e.message, true);
+    }
+  } finally {
+    if(showSpinner) btn.classList.remove('spinning');
+  }
+}
+
+function uniqueLocations(){
+  const s = new Set();
+  RECORDS.forEach(r => s.add(r.loc));
+  return Array.from(s).sort();
+}
+
+function renderStats(){
+  const total = RECORDS.length;
+  const activeN = RECORDS.filter(r=>r.bucket==='active').length;
+  const downN = RECORDS.filter(r=>r.bucket==='active' && r.status==='down').length;
+  const closedN = RECORDS.filter(r=>r.bucket==='closed').length;
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="n">${activeN}</div><div class="l">Active</div></div>
+    <div class="stat"><div class="n" style="color:var(--red)">${downN}</div><div class="l">Down</div></div>
+    <div class="stat"><div class="n">${closedN}</div><div class="l">Closed</div></div>
+    <div class="stat"><div class="n">${total}</div><div class="l">Total</div></div>
+  `;
+}
+
+function renderFilters(){
+  const locs = uniqueLocations();
+  const locChips = ['all', ...locs].map(l => `<button class="chip ${state.loc===l?'active':''}" data-type="loc" data-val="${l}">${l==='all'?'All Locations':l}</button>`).join('');
+  const statusChips = ['all','up','down'].map(s => `<button class="chip ${s!=='all'?'status-'+s:''} ${state.status===s?'active':''}" data-type="status" data-val="${s}">${s==='all'?'All Status':s.charAt(0).toUpperCase()+s.slice(1)}</button>`).join('');
+  const techChips = ['all', ...TECHS].map(t => `<button class="chip ${state.tech===t?'active':''}" data-type="tech" data-val="${t}">${t==='all'?'All Techs':t}</button>`).join('');
+  document.getElementById('filters').innerHTML = `
+    <div class="chipgroup">${locChips}</div>
+    <div class="chipgroup">${statusChips}</div>
+    <div class="chipgroup">${techChips}</div>
+  `;
+  document.querySelectorAll('.chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state[btn.dataset.type] = btn.dataset.val;
+      renderFilters(); renderList();
+    });
+  });
+}
+
+function matches(r){
+  if(state.seg === 'active' && r.bucket !== 'active') return false;
+  if(state.seg === 'closed' && r.bucket !== 'closed') return false;
+  if(state.loc !== 'all' && r.loc !== state.loc) return false;
+  if(state.status !== 'all' && r.status !== state.status) return false;
+  if(state.tech !== 'all' && !r.techs.includes(state.tech)) return false;
+  if(state.search){
+    const q = state.search.toLowerCase();
+    const hay = [r.customer, r.bus, r.caseNum, r.complaint, r.tasks, r.notes].join(' ').toLowerCase();
+    if(!hay.includes(q)) return false;
+  }
+  return true;
+}
+
+function escapeHtml(s){
+  return (s||'').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderList(){
+  const items = RECORDS.filter(matches);
+  const list = document.getElementById('list');
+  if(items.length === 0){
+    list.innerHTML = '<div class="empty">No cases match your filters.</div>';
+    return;
+  }
+  list.innerHTML = items.map((r) => {
+    const idx = RECORDS.indexOf(r);
+    const pillClass = r.status === 'up' ? 'up' : (r.status === 'down' ? 'down' : 'other');
+    const techBadges = r.techs.map(t => `<div class="tech ${r.bucket==='closed'?'closed-tag':''}" title="${t}">${TECH_INIT[t]}</div>`).join('');
+    return `<div class="card" data-idx="${idx}">
+      <div class="row1">
+        <div>
+          <div class="idline">Case #${escapeHtml(r.caseNum)} &middot; ${escapeHtml(r.date)}</div>
+          <div class="bus">${escapeHtml(r.bus)}</div>
+        </div>
+        <span class="pill ${pillClass}">${escapeHtml(r.statusLabel)}</span>
+      </div>
+      <div class="meta">${escapeHtml(r.customer)} &middot; ${escapeHtml(r.loc)}</div>
+      <div class="complaint">${escapeHtml(r.complaint || 'No complaint logged')}</div>
+      <div class="foot">
+        <div class="techs">${techBadges}</div>
+        <div class="miles">${escapeHtml(r.mileage)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('click', () => openSheet(RECORDS[parseInt(card.dataset.idx)]));
+  });
+}
+
+function openSheet(r){
+  document.getElementById('sheetTitle').textContent = r.bus;
+  document.getElementById('sheetSub').textContent = `Case #${r.caseNum} · ${r.customer} · ${r.date}`;
+  const pillClass = r.status === 'up' ? 'up' : (r.status === 'down' ? 'down' : 'other');
+  document.getElementById('sheetbody').innerHTML = `
+    <div class="badgerow">
+      <span class="pill ${pillClass}">${escapeHtml(r.statusLabel)}</span>
+      <span class="badge">${escapeHtml(r.loc)}</span>
+      <span class="badge">${r.bucket === 'closed' ? 'Closed' : 'Active'}${r.caseStatus ? ' · '+escapeHtml(r.caseStatus) : ''}</span>
+      ${r.mileage ? `<span class="badge">${escapeHtml(r.mileage)}</span>` : ''}
+      ${r.techs.map(t => `<span class="badge">${t}</span>`).join('')}
+    </div>
+    <div class="field"><div class="fl">Initial Complaint</div><div class="fv">${escapeHtml(r.complaint) || '—'}</div></div>
+    <div class="field"><div class="fl">Tasks</div><div class="fv">${escapeHtml(r.tasks) || '—'}</div></div>
+    <div class="field"><div class="fl">Update Log</div><div class="fv">${escapeHtml(r.notes) || '—'}</div></div>
+  `;
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('sheet').classList.add('show');
+}
+
+function closeSheet(){
+  document.getElementById('overlay').classList.remove('show');
+  document.getElementById('sheet').classList.remove('show');
+}
+
+document.getElementById('overlay').addEventListener('click', closeSheet);
+document.getElementById('closeSheet').addEventListener('click', closeSheet);
+document.getElementById('refreshBtn').addEventListener('click', () => loadData(true));
+
+document.querySelectorAll('#segmented button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#segmented button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.seg = btn.dataset.seg;
+    renderList();
+  });
+});
+
+document.getElementById('search').addEventListener('input', (e) => {
+  state.search = e.target.value;
+  renderList();
+});
+
+if(window.navigator.standalone){
+  document.getElementById('tip').style.display = 'none';
+}
+
+loadData(false);
+// Refresh automatically whenever the app regains focus / becomes visible (e.g. reopened from home screen)
+document.addEventListener('visibilitychange', () => { if(!document.hidden) loadData(false); });
+</script>
+</body>
+</html>
