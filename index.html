@@ -102,6 +102,20 @@
   .badgerow{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
   .badge{font-size:12px; font-weight:600; padding:4px 10px; border-radius:8px; background:var(--chip);}
 
+  .notebox{margin-top:16px; background:var(--bg); border-radius:12px; padding:12px;}
+  .notebox .fl{font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--sub); font-weight:700; margin-bottom:6px;}
+  .notebox input[type=text], .notebox textarea{width:100%; border:1px solid var(--sep); background:var(--card);
+    border-radius:8px; padding:8px 10px; font-size:14px; font-family:inherit; resize:vertical;}
+  .notebox input[type=text]{margin-bottom:8px;}
+  .notebox textarea{min-height:64px;}
+  .notebox .noterow{display:flex; justify-content:flex-end; gap:8px; margin-top:8px; align-items:center;}
+  .notebox .notemsg{font-size:12px; color:var(--sub); margin-right:auto;}
+  .notebox .notemsg.err{color:var(--red);}
+  .notebox .notemsg.ok{color:var(--green);}
+  #addNoteBtn{background:var(--blue); color:#fff; border:none; padding:8px 16px; border-radius:8px;
+    font-size:14px; font-weight:600; font-family:inherit;}
+  #addNoteBtn:disabled{opacity:0.5;}
+
   .tip{font-size:11.5px; color:var(--sub); text-align:center; padding:6px 20px 2px;}
 </style>
 </head>
@@ -149,7 +163,9 @@
 const SHEET_ID = "1TKwhZqrbfQqDoQ37ZuKbUXXzJeUjJAaM6J1ZbCjmZeE";
 const GID = "715450010";
 const CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv&gid=" + GID;
+const NOTES_API_URL = "https://script.google.com/macros/s/AKfycbxIXaHyejXPn4LOzUaeHcPRmc4c0RFM5NtWqNRfjNwgBh3H0AoIqutwz0lgvq1JoAId/exec";
 const CACHE_KEY = "ecotuned_tracker_cache_v1";
+const AUTHOR_KEY = "ecotuned_tracker_author";
 
 const TECHS = ['Emigdio','David','Jovanni'];
 const TECH_INIT = {Emigdio:'EF', David:'DF', Jovanni:'JC'};
@@ -184,9 +200,10 @@ function csvToObjects(text){
   const rows = parseCSV(text).filter(r => r.length > 1 || (r.length===1 && r[0] !== ''));
   if(rows.length === 0) return [];
   const headers = rows[0];
-  return rows.slice(1).map(r => {
+  return rows.slice(1).map((r, i) => {
     const obj = {};
-    headers.forEach((h, i) => obj[h] = r[i] !== undefined ? r[i] : '');
+    headers.forEach((h, j) => obj[h] = r[j] !== undefined ? r[j] : '');
+    obj.__sheetRow = i + 2; // +1 for header row, +1 for 1-based indexing
     return obj;
   });
 }
@@ -216,7 +233,8 @@ function makeRecord(r){
     notes: norm(r['Last update']),
     mileage: r['Mileage'] || '',
     caseStatus: norm(r['Case status']),
-    bucket
+    bucket,
+    sheetRow: r.__sheetRow
   };
 }
 
@@ -361,10 +379,14 @@ function renderList(){
   });
 }
 
+let CURRENT_RECORD = null;
+
 function openSheet(r){
+  CURRENT_RECORD = r;
   document.getElementById('sheetTitle').textContent = r.bus;
   document.getElementById('sheetSub').textContent = `Case #${r.caseNum} · ${r.customer} · ${r.date}`;
   const pillClass = r.status === 'up' ? 'up' : (r.status === 'down' ? 'down' : 'other');
+  const savedAuthor = localStorage.getItem(AUTHOR_KEY) || '';
   document.getElementById('sheetbody').innerHTML = `
     <div class="badgerow">
       <span class="pill ${pillClass}">${escapeHtml(r.statusLabel)}</span>
@@ -375,10 +397,61 @@ function openSheet(r){
     </div>
     <div class="field"><div class="fl">Initial Complaint</div><div class="fv">${escapeHtml(r.complaint) || '—'}</div></div>
     <div class="field"><div class="fl">Tasks</div><div class="fv">${escapeHtml(r.tasks) || '—'}</div></div>
-    <div class="field"><div class="fl">Update Log</div><div class="fv">${escapeHtml(r.notes) || '—'}</div></div>
+    <div class="field"><div class="fl">Update Log</div><div class="fv" id="notesLog">${escapeHtml(r.notes) || '—'}</div></div>
+    <div class="notebox">
+      <div class="fl">Add a note</div>
+      <input type="text" id="noteAuthor" placeholder="Your name" value="${escapeHtml(savedAuthor)}">
+      <textarea id="noteText" placeholder="What did you do / find?"></textarea>
+      <div class="noterow">
+        <span class="notemsg" id="noteMsg"></span>
+        <button id="addNoteBtn">Send</button>
+      </div>
+    </div>
   `;
+  document.getElementById('addNoteBtn').addEventListener('click', submitNote);
   document.getElementById('overlay').classList.add('show');
   document.getElementById('sheet').classList.add('show');
+}
+
+async function submitNote(){
+  const r = CURRENT_RECORD;
+  if(!r) return;
+  const authorEl = document.getElementById('noteAuthor');
+  const textEl = document.getElementById('noteText');
+  const msgEl = document.getElementById('noteMsg');
+  const btn = document.getElementById('addNoteBtn');
+  const author = authorEl.value.trim();
+  const note = textEl.value.trim();
+  if(!note){
+    msgEl.textContent = 'Write something first.';
+    msgEl.className = 'notemsg err';
+    return;
+  }
+  localStorage.setItem(AUTHOR_KEY, author);
+  btn.disabled = true;
+  msgEl.textContent = 'Sending…';
+  msgEl.className = 'notemsg';
+  try{
+    const res = await fetch(NOTES_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ rowIndex: r.sheetRow, caseNum: r.caseNum, note, author })
+    });
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'Unknown error');
+    // Optimistically update in-memory + on-screen log
+    r.notes = data.updated;
+    document.getElementById('notesLog').textContent = r.notes;
+    textEl.value = '';
+    msgEl.textContent = 'Note added.';
+    msgEl.className = 'notemsg ok';
+    // Background refresh so list stays in sync with the sheet
+    loadData(false);
+  } catch(e){
+    msgEl.textContent = 'Failed: ' + e.message;
+    msgEl.className = 'notemsg err';
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function closeSheet(){
