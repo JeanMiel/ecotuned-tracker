@@ -484,10 +484,10 @@ function openSheet(r){
     ${needsRecallConfirm ? `
     <div class="recallbanner" id="recallBanner">
       <div class="recallbanner-title">&#9888; Power Steering Recall</div>
-      <div class="recallbanner-text">Aucune date de mise à jour Power Steering trouvée pour le bus ${escapeHtml(r.bus)}. Merci de confirmer si la mise à jour a été complétée.</div>
+      <div class="recallbanner-text">No Power Steering update date found for bus ${escapeHtml(r.bus)}. Please confirm whether the update has been completed.</div>
       <div class="recallbanner-row">
         <span class="notemsg" id="recallMsg"></span>
-        <button id="confirmRecallBtn">Confirmer complété</button>
+        <button id="confirmRecallBtn">Confirm completed</button>
       </div>
     </div>
     ` : ''}
@@ -549,7 +549,7 @@ async function submitRecallConfirm(r){
   const btn = document.getElementById('confirmRecallBtn');
   const msgEl = document.getElementById('recallMsg');
   btn.disabled = true;
-  msgEl.textContent = 'Envoi…';
+  msgEl.textContent = 'Sending…';
   msgEl.className = 'notemsg';
   try{
     const res = await fetch(NOTES_API_URL, {
@@ -562,7 +562,7 @@ async function submitRecallConfirm(r){
     const banner = document.getElementById('recallBanner');
     if(banner) banner.remove();
   } catch(e){
-    msgEl.textContent = 'Échec : ' + e.message;
+    msgEl.textContent = 'Failed: ' + e.message;
     msgEl.className = 'notemsg err';
     btn.disabled = false;
   }
