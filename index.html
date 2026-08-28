@@ -64,8 +64,12 @@
   .empty{text-align:center; color:var(--sub); margin-top:60px; font-size:14px;}
   .loading{text-align:center; color:var(--sub); margin-top:60px; font-size:14px;}
 
-  .card{background:var(--card); border-radius:14px; padding:12px 14px; margin-bottom:10px;
-    box-shadow:0 1px 2px rgba(0,0,0,.06);}
+  .card-wrap{position:relative; margin-bottom:10px; border-radius:14px; overflow:hidden;}
+  .card-delete-bg{position:absolute; inset:0; background:var(--red); display:flex; align-items:stretch; justify-content:flex-end;}
+  .card-delete-btn{background:none; border:none; color:#fff; font-size:13px; font-weight:700;
+    padding:0 20px; font-family:inherit; white-space:nowrap;}
+  .card{background:var(--card); border-radius:14px; padding:12px 14px;
+    box-shadow:0 1px 2px rgba(0,0,0,.06); position:relative; touch-action:pan-y;}
   .card .row1{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
   .card .idline{font-size:12px; color:var(--sub); font-weight:600;}
   .card .bus{font-size:16px; font-weight:700; margin-top:1px;}
@@ -473,26 +477,105 @@ function renderList(){
     const idx = RECORDS.indexOf(r);
     const pillClass = r.status === 'up' ? 'up' : (r.status === 'down' ? 'down' : 'other');
     const techBadges = r.techs.map(t => `<div class="tech ${r.bucket==='closed'?'closed-tag':''}" title="${t}">${TECH_INIT[t]}</div>`).join('');
-    return `<div class="card" data-idx="${idx}">
-      <div class="row1">
-        <div>
-          <div class="idline">Case #${escapeHtml(r.caseNum)} &middot; ${escapeHtml(r.date)}</div>
-          <div class="bus">${escapeHtml(r.bus)}</div>
+    return `<div class="card-wrap">
+      <div class="card-delete-bg"><button type="button" class="card-delete-btn" data-idx="${idx}">Delete</button></div>
+      <div class="card" data-idx="${idx}">
+        <div class="row1">
+          <div>
+            <div class="idline">Case #${escapeHtml(r.caseNum)} &middot; ${escapeHtml(r.date)}</div>
+            <div class="bus">${escapeHtml(r.bus)}</div>
+          </div>
+          <span class="pill ${pillClass}">${escapeHtml(r.statusLabel)}</span>
         </div>
-        <span class="pill ${pillClass}">${escapeHtml(r.statusLabel)}</span>
-      </div>
-      <div class="meta">${escapeHtml(r.customer)} &middot; ${escapeHtml(r.loc)}</div>
-      <div class="complaint">${escapeHtml(r.complaint || 'No complaint logged')}</div>
-      <div class="foot">
-        <div class="techs">${techBadges}</div>
-        <div class="miles">${escapeHtml(r.mileage)}</div>
+        <div class="meta">${escapeHtml(r.customer)} &middot; ${escapeHtml(r.loc)}</div>
+        <div class="complaint">${escapeHtml(r.complaint || 'No complaint logged')}</div>
+        <div class="foot">
+          <div class="techs">${techBadges}</div>
+          <div class="miles">${escapeHtml(r.mileage)}</div>
+        </div>
       </div>
     </div>`;
   }).join('');
 
+  const SWIPE_OPEN = -84;
   document.querySelectorAll('.card').forEach(card => {
-    card.addEventListener('click', () => openSheet(RECORDS[parseInt(card.dataset.idx)]));
+    let startX=0, startY=0, curX=0, dragging=false, isSwipeGesture=false, startTranslate=0;
+    card.addEventListener('pointerdown', (e) => {
+      document.querySelectorAll('.card.swiped').forEach(c => {
+        if(c !== card){ c.style.transform=''; c.classList.remove('swiped'); }
+      });
+      startX = e.clientX; startY = e.clientY; dragging = true; isSwipeGesture = false;
+      startTranslate = card.classList.contains('swiped') ? SWIPE_OPEN : 0;
+      curX = startTranslate;
+      card.style.transition = 'none';
+    });
+    card.addEventListener('pointermove', (e) => {
+      if(!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if(!isSwipeGesture){
+        if(Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) isSwipeGesture = true;
+        else if(Math.abs(dy) > 8){ dragging = false; return; }
+      }
+      if(isSwipeGesture){
+        curX = Math.max(SWIPE_OPEN, Math.min(0, startTranslate + dx));
+        card.style.transform = `translateX(${curX}px)`;
+      }
+    });
+    const endDrag = () => {
+      if(!dragging) return;
+      dragging = false;
+      card.style.transition = '';
+      if(isSwipeGesture){
+        if(curX < SWIPE_OPEN/2){
+          card.style.transform = `translateX(${SWIPE_OPEN}px)`;
+          card.classList.add('swiped');
+        } else {
+          card.style.transform = '';
+          card.classList.remove('swiped');
+        }
+      }
+    };
+    card.addEventListener('pointerup', endDrag);
+    card.addEventListener('pointercancel', endDrag);
+    card.addEventListener('click', () => {
+      if(isSwipeGesture || card.classList.contains('swiped')){
+        if(card.classList.contains('swiped')){
+          card.style.transform = '';
+          card.classList.remove('swiped');
+        }
+        isSwipeGesture = false;
+        return;
+      }
+      openSheet(RECORDS[parseInt(card.dataset.idx)]);
+    });
   });
+
+  document.querySelectorAll('.card-delete-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const r = RECORDS[parseInt(btn.dataset.idx, 10)];
+      if(!r) return;
+      if(!confirm(`Delete case #${r.caseNum} (${r.bus})? This cannot be undone.`)) return;
+      deleteCase(r);
+    });
+  });
+}
+
+async function deleteCase(r){
+  try{
+    const res = await fetch(NOTES_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deleteCase', rowIndex: r.sheetRow, caseNum: r.caseNum })
+    });
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'Unknown error');
+    const idx = RECORDS.indexOf(r);
+    if(idx > -1) RECORDS.splice(idx, 1);
+    renderStats(); renderList();
+  } catch(e){
+    alert('Could not delete case: ' + e.message);
+  }
 }
 
 let CURRENT_RECORD = null;
