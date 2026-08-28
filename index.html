@@ -148,6 +148,14 @@
   #createCaseBtn:disabled{opacity:0.5;}
 
   .tip{font-size:11.5px; color:var(--sub); text-align:center; padding:6px 20px 2px;}
+
+  .recallbanner{margin-top:4px; margin-bottom:4px; background:#fff4e5; border:1px solid var(--amber); border-radius:12px; padding:12px;}
+  .recallbanner-title{font-size:13px; font-weight:700; color:#b25000; margin-bottom:4px;}
+  .recallbanner-text{font-size:13px; color:var(--text); line-height:1.4;}
+  .recallbanner-row{display:flex; justify-content:flex-end; gap:8px; margin-top:10px; align-items:center;}
+  #confirmRecallBtn{background:var(--amber); color:#fff; border:none; padding:8px 16px; border-radius:8px;
+    font-size:14px; font-weight:600; font-family:inherit;}
+  #confirmRecallBtn:disabled{opacity:0.5;}
 </style>
 </head>
 <body>
@@ -197,6 +205,8 @@
 const SHEET_ID = "1TKwhZqrbfQqDoQ37ZuKbUXXzJeUjJAaM6J1ZbCjmZeE";
 const GID = "715450010";
 const CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv&gid=" + GID;
+const RECALL_GID = "925504539";
+const RECALL_CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv&gid=" + RECALL_GID;
 const NOTES_API_URL = "https://script.google.com/macros/s/AKfycbxIXaHyejXPn4LOzUaeHcPRmc4c0RFM5NtWqNRfjNwgBh3H0AoIqutwz0lgvq1JoAId/exec";
 const CACHE_KEY = "ecotuned_tracker_cache_v1";
 const AUTHOR_KEY = "ecotuned_tracker_author";
@@ -273,6 +283,7 @@ function makeRecord(r){
 }
 
 let RECORDS = [];
+let RECALL_MAP = {};
 const state = { seg:'active', search:'', loc:'all', status:'all', tech:'all' };
 
 function buildRecordsFromCsv(text){
@@ -288,6 +299,30 @@ function setSync(msg, isErr){
   el.classList.toggle('err', !!isErr);
 }
 
+function buildRecallMap(text){
+  const objs = csvToObjects(text);
+  const map = {};
+  objs.forEach(o => {
+    const bus = norm(o['Bus #']);
+    if(!bus) return;
+    const dateVal = norm(o['Recall Date']);
+    if(!map[bus]) map[bus] = { done: true };
+    if(!dateVal) map[bus].done = false;
+  });
+  return map;
+}
+
+async function loadRecallData(){
+  try{
+    const res = await fetch(RECALL_CSV_URL, {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    RECALL_MAP = buildRecallMap(text);
+  } catch(e){
+    // Non-critical: if this fails, the recall banner simply won't show.
+  }
+}
+
 async function loadData(showSpinner){
   const btn = document.getElementById('refreshBtn');
   if(showSpinner) btn.classList.add('spinning');
@@ -299,6 +334,7 @@ async function loadData(showSpinner){
     localStorage.setItem(CACHE_KEY, JSON.stringify({text, ts: Date.now()}));
     setSync('Updated ' + new Date().toLocaleString());
     renderStats(); renderFilters(); renderList();
+    loadRecallData();
   } catch(e){
     // fall back to cache if we have one and nothing loaded yet
     if(RECORDS.length === 0){
@@ -308,6 +344,7 @@ async function loadData(showSpinner){
           const {text, ts} = JSON.parse(cached);
           RECORDS = buildRecordsFromCsv(text);
           renderStats(); renderFilters(); renderList();
+          loadRecallData();
           setSync('Offline — showing data from ' + new Date(ts).toLocaleString(), true);
         } catch(e2){
           setSync('Could not load data: ' + e.message, true);
@@ -441,7 +478,19 @@ function openSheet(r){
   document.getElementById('sheetSub').textContent = `Case #${r.caseNum} · ${r.customer} · ${r.date}`;
   const pillClass = r.status === 'up' ? 'up' : (r.status === 'down' ? 'down' : 'other');
   const savedAuthor = localStorage.getItem(AUTHOR_KEY) || '';
+  const recall = RECALL_MAP[r.bus];
+  const needsRecallConfirm = !!(recall && recall.done === false);
   document.getElementById('sheetbody').innerHTML = `
+    ${needsRecallConfirm ? `
+    <div class="recallbanner" id="recallBanner">
+      <div class="recallbanner-title">&#9888; Power Steering Recall</div>
+      <div class="recallbanner-text">Aucune date de mise à jour Power Steering trouvée pour le bus ${escapeHtml(r.bus)}. Merci de confirmer si la mise à jour a été complétée.</div>
+      <div class="recallbanner-row">
+        <span class="notemsg" id="recallMsg"></span>
+        <button id="confirmRecallBtn">Confirmer complété</button>
+      </div>
+    </div>
+    ` : ''}
     <div class="badgerow">
       <span class="pill ${pillClass}">${escapeHtml(r.statusLabel)}</span>
       <span class="badge">${escapeHtml(r.loc)}</span>
@@ -489,8 +538,34 @@ function openSheet(r){
   `;
   document.getElementById('addNoteBtn').addEventListener('click', submitNote);
   document.getElementById('saveStatusBtn').addEventListener('click', submitStatus);
+  if(needsRecallConfirm){
+    document.getElementById('confirmRecallBtn').addEventListener('click', () => submitRecallConfirm(r));
+  }
   document.getElementById('overlay').classList.add('show');
   document.getElementById('sheet').classList.add('show');
+}
+
+async function submitRecallConfirm(r){
+  const btn = document.getElementById('confirmRecallBtn');
+  const msgEl = document.getElementById('recallMsg');
+  btn.disabled = true;
+  msgEl.textContent = 'Envoi…';
+  msgEl.className = 'notemsg';
+  try{
+    const res = await fetch(NOTES_API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'psRecall', bus: r.bus })
+    });
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'Unknown error');
+    if(RECALL_MAP[r.bus]) RECALL_MAP[r.bus].done = true;
+    const banner = document.getElementById('recallBanner');
+    if(banner) banner.remove();
+  } catch(e){
+    msgEl.textContent = 'Échec : ' + e.message;
+    msgEl.className = 'notemsg err';
+    btn.disabled = false;
+  }
 }
 
 async function submitStatus(){
