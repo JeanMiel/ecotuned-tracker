@@ -152,7 +152,9 @@
   .recallbanner{margin-top:4px; margin-bottom:4px; background:#fff4e5; border:1px solid var(--amber); border-radius:12px; padding:12px;}
   .recallbanner-title{font-size:13px; font-weight:700; color:#b25000; margin-bottom:4px;}
   .recallbanner-text{font-size:13px; color:var(--text); line-height:1.4;}
-  .recallbanner-row{display:flex; justify-content:flex-end; gap:8px; margin-top:10px; align-items:center;}
+  .recallbanner-row{display:flex; justify-content:flex-end; gap:8px; margin-top:10px; align-items:center; flex-wrap:wrap;}
+  #recallVersionSelect{border:1px solid var(--amber); background:#fff; border-radius:8px; padding:7px 8px;
+    font-size:13px; font-family:inherit;}
   #confirmRecallBtn{background:var(--amber); color:#fff; border:none; padding:8px 16px; border-radius:8px;
     font-size:14px; font-weight:600; font-family:inherit;}
   #confirmRecallBtn:disabled{opacity:0.5;}
@@ -484,8 +486,13 @@ function openSheet(r){
     ${needsRecallConfirm ? `
     <div class="recallbanner" id="recallBanner">
       <div class="recallbanner-title">&#9888; Power Steering Recall</div>
-      <div class="recallbanner-text">No Power Steering update date found for bus ${escapeHtml(r.bus)}. Please confirm whether the update has been completed.</div>
+      <div class="recallbanner-text">No Power Steering update date found for bus ${escapeHtml(r.bus)}. Please confirm whether the update has been completed and select the version installed.</div>
       <div class="recallbanner-row">
+        <select id="recallVersionSelect">
+          <option value="">Select version…</option>
+          <option value="V1.5">V1.5</option>
+          <option value="V3.2">V3.2</option>
+        </select>
         <span class="notemsg" id="recallMsg"></span>
         <button id="confirmRecallBtn">Confirm completed</button>
       </div>
@@ -548,13 +555,20 @@ function openSheet(r){
 async function submitRecallConfirm(r){
   const btn = document.getElementById('confirmRecallBtn');
   const msgEl = document.getElementById('recallMsg');
+  const versionEl = document.getElementById('recallVersionSelect');
+  const version = versionEl.value;
+  if(!version){
+    msgEl.textContent = 'Please select a version.';
+    msgEl.className = 'notemsg err';
+    return;
+  }
   btn.disabled = true;
   msgEl.textContent = 'Sending…';
   msgEl.className = 'notemsg';
   try{
     const res = await fetch(NOTES_API_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'psRecall', bus: r.bus })
+      body: JSON.stringify({ action: 'psRecall', bus: r.bus, version })
     });
     const data = await res.json();
     if(!data.ok) throw new Error(data.error || 'Unknown error');
