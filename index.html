@@ -325,13 +325,14 @@ async function loadData(showSpinner){
   }
 }
 
+const LOW_PRIORITY_LOCS = ['Nebraska', 'Unknown'];
+
 function uniqueLocations(){
   const s = new Set();
   RECORDS.forEach(r => s.add(r.loc));
   const arr = Array.from(s).sort();
-  const lowPriority = ['Nebraska', 'Unknown'];
-  const primary = arr.filter(l => !lowPriority.includes(l));
-  const secondary = lowPriority.filter(l => arr.includes(l));
+  const primary = arr.filter(l => !LOW_PRIORITY_LOCS.includes(l));
+  const secondary = LOW_PRIORITY_LOCS.filter(l => arr.includes(l));
   return [...primary, ...secondary];
 }
 
@@ -350,14 +351,26 @@ function renderStats(){
 
 function renderFilters(){
   const locs = uniqueLocations();
-  const locChips = ['all', ...locs].map(l => `<button class="chip ${state.loc===l?'active':''}" data-type="loc" data-val="${l}">${l==='all'?'All Locations':l}</button>`).join('');
-  const statusChips = ['all','up','down'].map(s => `<button class="chip ${s!=='all'?'status-'+s:''} ${state.status===s?'active':''}" data-type="status" data-val="${s}">${s==='all'?'All Status':s.charAt(0).toUpperCase()+s.slice(1)}</button>`).join('');
-  const techChips = ['all', ...TECHS].map(t => `<button class="chip ${state.tech===t?'active':''}" data-type="tech" data-val="${t}">${t==='all'?'All Techs':t}</button>`).join('');
-  document.getElementById('filters').innerHTML = `
-    <div class="chipgroup">${locChips}</div>
-    <div class="chipgroup">${statusChips}</div>
-    <div class="chipgroup">${techChips}</div>
-  `;
+  const primaryLocs = locs.filter(l => !LOW_PRIORITY_LOCS.includes(l));
+  const secondaryLocs = locs.filter(l => LOW_PRIORITY_LOCS.includes(l));
+
+  const locChip = (l, label) => `<button class="chip ${state.loc===l?'active':''}" data-type="loc" data-val="${l}">${label || l}</button>`;
+  const statusChip = (s, label) => `<button class="chip status-${s} ${state.status===s?'active':''}" data-type="status" data-val="${s}">${label}</button>`;
+  const techChip = (t) => `<button class="chip ${state.tech===t?'active':''}" data-type="tech" data-val="${t}">${t}</button>`;
+
+  // Single row, fixed order: All Locations, North, South, Up, Down, Emigdio, Jovanni, David, then low-priority locations last
+  const chips = [
+    locChip('all', 'All Locations'),
+    ...primaryLocs.map(l => locChip(l)),
+    statusChip('up', 'Up'),
+    statusChip('down', 'Down'),
+    techChip('Emigdio'),
+    techChip('Jovanni'),
+    techChip('David'),
+    ...secondaryLocs.map(l => locChip(l))
+  ].join('');
+
+  document.getElementById('filters').innerHTML = `<div class="chipgroup">${chips}</div>`;
   document.querySelectorAll('.chip').forEach(btn => {
     btn.addEventListener('click', () => {
       const type = btn.dataset.type;
