@@ -848,6 +848,19 @@ const ROOT_CAUSE_OPTIONS = [
 function norm(s){ return (s||'').toString().trim(); }
 function normLower(s){ return norm(s).toLowerCase(); }
 
+// Mileage is entered as free text ('45,120 mi', '13,951 km', etc). Always
+// display it normalized to miles so units never get mixed in the UI.
+const KM_TO_MI = 0.621371;
+function formatMileage(raw){
+  const s = norm(raw);
+  if(!s) return '';
+  const numMatch = s.replace(/,/g,'').match(/[\d.]+/);
+  if(!numMatch) return s; // couldn't parse a number, show as-is rather than dropping it
+  let val = parseFloat(numMatch[0]);
+  if(/km/i.test(s)) val = val * KM_TO_MI;
+  return Math.round(val).toLocaleString('en-US') + ' mi';
+}
+
 // Minimal RFC4180-ish CSV parser (handles quoted fields, embedded commas/newlines, doubled quotes)
 function parseCSV(text){
   const rows = [];
@@ -906,7 +919,7 @@ function makeRecord(r){
     complaint: norm(r['Initial Complaint']),
     tasks: norm(r['Tasks']),
     notes: norm(r['Last update']),
-    mileage: r['Mileage'] || '',
+    mileage: formatMileage(r['Mileage']),
     caseStatus: norm(r['Case status']),
     subAssembly: norm(r['Sub Assembly']),
     symptom: norm(r['Symptom']),
