@@ -156,6 +156,16 @@
   .statusbox .noterow{display:flex; justify-content:flex-end; gap:8px; margin-top:8px; align-items:center;}
   .closefields{margin-top:6px;}
   .closefields label{margin-top:8px;}
+  .combo-wrap{position:relative;}
+  .combo-list{position:absolute; z-index:60; left:0; right:0; top:calc(100% + 2px); background:var(--card);
+    border:1px solid var(--sep); max-height:200px; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    border-radius:8px; box-shadow:0 6px 16px rgba(0,0,0,.18); display:none;}
+  .combo-list.show{display:block;}
+  .combo-item{padding:9px 12px; font-size:13.5px; cursor:pointer; border-bottom:1px solid var(--sep);}
+  .combo-item:last-child{border-bottom:none;}
+  .combo-item:hover, .combo-item.hl{background:var(--bg);}
+  .combo-item.empty{color:var(--sub); font-style:italic; cursor:default;}
+  .combo-item.empty:hover{background:transparent;}
   #saveStatusBtn{background:var(--green); color:#fff; border:none; padding:8px 16px; border-radius:8px;
     font-size:14px; font-weight:600; font-family:inherit;}
   #saveStatusBtn:disabled{opacity:0.5;}
@@ -1277,21 +1287,24 @@ function openSheet(r){
           <option value="">Select...</option>${SUB_ASSEMBLY_OPTIONS.map(o => `<option value="${escapeHtml(o)}" ${r.subAssembly===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
         </select>
         <label>Symptom</label>
-        <select id="symptomSelect">
-          <option value="">Select...</option>${SYMPTOM_OPTIONS.map(o => `<option value="${escapeHtml(o)}" ${r.symptom===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
-        </select>
+        <div class="combo-wrap">
+          <input type="text" id="symptomInput" autocomplete="off" placeholder="Search or select..." value="${escapeHtml(r.symptom)}">
+          <div class="combo-list" id="symptomList"></div>
+        </div>
         <label>Component</label>
-        <select id="componentSelect">
-          <option value="">Select...</option>${COMPONENT_OPTIONS.map(o => `<option value="${escapeHtml(o)}" ${r.component===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
-        </select>
+        <div class="combo-wrap">
+          <input type="text" id="componentInput" autocomplete="off" placeholder="Search or select..." value="${escapeHtml(r.component)}">
+          <div class="combo-list" id="componentList"></div>
+        </div>
         <label>Solution</label>
         <select id="solutionSelect">
           <option value="">Select...</option>${SOLUTION_OPTIONS.map(o => `<option value="${escapeHtml(o)}" ${r.solution===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
         </select>
         <label>Root Cause</label>
-        <select id="rootCauseSelect">
-          <option value="">Select...</option>${ROOT_CAUSE_OPTIONS.map(o => `<option value="${escapeHtml(o)}" ${r.rootCause===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
-        </select>
+        <div class="combo-wrap">
+          <input type="text" id="rootCauseInput" autocomplete="off" placeholder="Search or select..." value="${escapeHtml(r.rootCause)}">
+          <div class="combo-list" id="rootCauseList"></div>
+        </div>
       </div>
       <div class="noterow">
         <span class="notemsg" id="statusMsg"></span>
@@ -1323,8 +1336,38 @@ function openSheet(r){
   if(needsRecallConfirm){
     document.getElementById('confirmRecallBtn').addEventListener('click', () => submitRecallConfirm(r));
   }
+  initCombo('symptomInput', 'symptomList', SYMPTOM_OPTIONS);
+  initCombo('componentInput', 'componentList', COMPONENT_OPTIONS);
+  initCombo('rootCauseInput', 'rootCauseList', ROOT_CAUSE_OPTIONS);
   document.getElementById('overlay').classList.add('show');
   document.getElementById('sheet').classList.add('show');
+}
+
+function initCombo(inputId, listId, options){
+  const input = document.getElementById(inputId);
+  const list = document.getElementById(listId);
+  if(!input || !list) return;
+  const MAX_SHOWN = 60;
+  function render(){
+    const q = input.value.trim().toLowerCase();
+    const matches = (q ? options.filter(o => o.toLowerCase().includes(q)) : options).slice(0, MAX_SHOWN);
+    if(!matches.length){
+      list.innerHTML = '<div class="combo-item empty">No matches</div>';
+    } else {
+      list.innerHTML = matches.map(o => `<div class="combo-item" data-val="${escapeHtml(o)}">${escapeHtml(o)}</div>`).join('');
+    }
+    list.classList.add('show');
+  }
+  input.addEventListener('focus', render);
+  input.addEventListener('input', render);
+  input.addEventListener('blur', () => setTimeout(() => list.classList.remove('show'), 150));
+  list.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('.combo-item[data-val]');
+    if(!item) return;
+    e.preventDefault();
+    input.value = item.getAttribute('data-val');
+    list.classList.remove('show');
+  });
 }
 
 async function submitRecallConfirm(r){
@@ -1361,20 +1404,20 @@ async function submitStatus(){
   const bucketEl = document.getElementById('bucketSelect');
   const caseStatusEl = document.getElementById('caseStatusInput');
   const subAssemblyEl = document.getElementById('subAssemblySelect');
-  const symptomEl = document.getElementById('symptomSelect');
-  const componentEl = document.getElementById('componentSelect');
+  const symptomEl = document.getElementById('symptomInput');
+  const componentEl = document.getElementById('componentInput');
   const solutionEl = document.getElementById('solutionSelect');
-  const rootCauseEl = document.getElementById('rootCauseSelect');
+  const rootCauseEl = document.getElementById('rootCauseInput');
   const msgEl = document.getElementById('statusMsg');
   const btn = document.getElementById('saveStatusBtn');
   const status = statusEl.value;
   const bucket = bucketEl.value;
   const caseStatus = caseStatusEl.value.trim();
   const subAssembly = subAssemblyEl.value;
-  const symptom = symptomEl.value;
-  const component = componentEl.value;
+  const symptom = symptomEl.value.trim();
+  const component = componentEl.value.trim();
   const solution = solutionEl.value;
-  const rootCause = rootCauseEl.value;
+  const rootCause = rootCauseEl.value.trim();
   btn.disabled = true;
   msgEl.textContent = 'Saving…';
   msgEl.className = 'notemsg';
