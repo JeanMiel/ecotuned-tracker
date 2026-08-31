@@ -71,6 +71,11 @@
   .gentag.mk3{background:#dbeafe; color:#1e40af;}
   .gentag.mk4{background:#ede9fe; color:#6b21a8;}
 
+  .swversions{display:flex; flex-wrap:wrap; gap:6px;}
+  .swver{display:inline-flex; align-items:baseline; gap:4px; font-size:12px; color:var(--sub);
+    background:var(--chip-bg,#f1f5f9); padding:3px 8px; border-radius:8px;}
+  .swver b{font-size:12px; color:var(--text,#111827); font-weight:700;}
+
   main{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0 16px calc(env(safe-area-inset-bottom) + 16px);}
   .pull-indicator{height:0; overflow:hidden; display:flex; align-items:center; justify-content:center; gap:6px;
     color:var(--sub); font-size:12.5px; font-weight:600; transition:height .15s ease;}
@@ -843,6 +848,10 @@ function makeRecord(r){
     mileage: formatMileage(r['Mileage']),
     lastLocation: norm(r['Last Location']),
     generation: norm(r['Generation']),
+    swInternal: norm(r['SW Internal']),
+    swFront: norm(r['SW Front']),
+    swRear: norm(r['SW Rear']),
+    swScreen: norm(r['SW Screen']),
     caseStatus: norm(r['Case status']),
     subAssembly: norm(r['Sub Assembly']),
     symptom: norm(r['Symptom']),
@@ -1232,6 +1241,12 @@ function openSheet(r){
     <div class="field"><div class="fl">Initial Complaint</div><div class="fv">${escapeHtml(r.complaint) || '—'}</div></div>
     <div class="field"><div class="fl">Tasks</div><div class="fv">${escapeHtml(r.tasks) || '—'}</div></div>
     ${r.lastLocation ? `<div class="field"><div class="fl">Last Known Location</div><div class="fv"><a href="${escapeHtml(r.lastLocation)}" target="_blank" rel="noopener">View on map</a></div></div>` : ''}
+    ${(r.swInternal || r.swFront || r.swRear || r.swScreen) ? `<div class="field"><div class="fl">Software Versions</div><div class="fv swversions">${[
+      r.swInternal ? `<span class="swver">Internal <b>${escapeHtml(r.swInternal)}</b></span>` : '',
+      r.swFront ? `<span class="swver">Front <b>${escapeHtml(r.swFront)}</b></span>` : '',
+      r.swRear ? `<span class="swver">Rear <b>${escapeHtml(r.swRear)}</b></span>` : '',
+      r.swScreen ? `<span class="swver">Screen <b>${escapeHtml(r.swScreen)}</b></span>` : ''
+    ].filter(Boolean).join('')}</div></div>` : ''}
     <div class="field"><div class="fl">Update Log</div><div class="fv" id="notesLog">${renderNotesLog(r.notes)}</div></div>
     <div class="statusbox">
       <div class="fl">Update status</div>
