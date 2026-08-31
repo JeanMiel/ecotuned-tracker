@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260831182052">
+<meta name="app-build" content="20260831184541">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -71,7 +71,13 @@
   .gentag.mk3{background:#dbeafe; color:#1e40af;}
   .gentag.mk4{background:#ede9fe; color:#6b21a8;}
 
-  main{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:10px 16px calc(env(safe-area-inset-bottom) + 16px);}
+  main{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0 16px calc(env(safe-area-inset-bottom) + 16px);}
+  .pull-indicator{height:0; overflow:hidden; display:flex; align-items:center; justify-content:center; gap:6px;
+    color:var(--sub); font-size:12.5px; font-weight:600; transition:height .15s ease;}
+  .pull-indicator .pull-spinner{display:inline-block; font-size:14px; transition:transform .15s ease;}
+  .pull-indicator.armed .pull-spinner{transform:rotate(180deg);}
+  .pull-indicator.refreshing .pull-spinner{animation:spin 0.8s linear infinite; transform:none;}
+  #listInner{padding-top:10px;}
   .empty{text-align:center; color:var(--sub); margin-top:60px; font-size:14px;}
   .loading{text-align:center; color:var(--sub); margin-top:60px; font-size:14px;}
 
@@ -217,7 +223,10 @@
     </div>
     <div class="filters" id="filters"></div>
   </header>
-  <main id="list"><div class="loading">Loading live data…</div></main>
+  <main id="list">
+    <div id="pullIndicator" class="pull-indicator"><span class="pull-spinner">&#8635;</span><span id="pullText">Pull to refresh</span></div>
+    <div id="listInner"><div class="loading">Loading live data…</div></div>
+  </main>
   <p class="tip" id="tip">Tap Share &rarr; Add to Home Screen for the full app experience.</p>
 </div>
 
@@ -243,7 +252,7 @@ const RECALL_CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/
 const NOTES_API_URL = "https://script.google.com/macros/s/AKfycbxIXaHyejXPn4LOzUaeHcPRmc4c0RFM5NtWqNRfjNwgBh3H0AoIqutwz0lgvq1JoAId/exec";
 const CACHE_KEY = "ecotuned_tracker_cache_v1";
 const AUTHOR_KEY = "ecotuned_tracker_author";
-const APP_BUILD = "20260831182052";
+const APP_BUILD = "20260831184541";
 
 // iOS home-screen (standalone) PWAs aggressively cache the app shell (HTML/JS/CSS) and
 // don't automatically pick up a new deploy just because the data refreshes. This checks
@@ -911,11 +920,11 @@ async function loadData(showSpinner){
           setSync('Offline — showing data from ' + new Date(ts).toLocaleString(), true);
         } catch(e2){
           setSync('Could not load data: ' + e.message, true);
-          document.getElementById('list').innerHTML = '<div class="empty">Could not load live data. Check your connection and tap refresh.</div>';
+          document.getElementById('listInner').innerHTML = '<div class="empty">Could not load live data. Check your connection and tap refresh.</div>';
         }
       } else {
         setSync('Could not load data: ' + e.message, true);
-        document.getElementById('list').innerHTML = '<div class="empty">Could not load live data. Check your connection and tap refresh.</div>';
+        document.getElementById('listInner').innerHTML = '<div class="empty">Could not load live data. Check your connection and tap refresh.</div>';
       }
     } else {
       setSync('Refresh failed: ' + e.message, true);
@@ -1018,7 +1027,7 @@ function renderNotesLog(text){
 
 function renderList(){
   const items = RECORDS.filter(matches);
-  const list = document.getElementById('list');
+  const list = document.getElementById('listInner');
   if(items.length === 0){
     list.innerHTML = '<div class="empty">No cases match your filters.</div>';
     return;
@@ -1543,6 +1552,65 @@ document.getElementById('search').addEventListener('input', (e) => {
   state.search = e.target.value;
   renderList();
 });
+
+// Pull-to-refresh: swipe down while at the top of the case list to refresh.
+(function initPullToRefresh(){
+  const main = document.getElementById('list');
+  const indicator = document.getElementById('pullIndicator');
+  const pullText = document.getElementById('pullText');
+  const THRESHOLD = 64;
+  const MAX_PULL = 90;
+  let startX = 0, startY = 0, pulling = false, armed = false, refreshing = false;
+
+  main.addEventListener('touchstart', (e) => {
+    if(refreshing || e.touches.length !== 1) { pulling = false; return; }
+    if(main.scrollTop <= 0){
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      pulling = true;
+    } else {
+      pulling = false;
+    }
+  }, {passive:true});
+
+  main.addEventListener('touchmove', (e) => {
+    if(!pulling || refreshing) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if(dy <= 0 || Math.abs(dx) > dy || main.scrollTop > 0){ pulling = false; indicator.style.height = '0px'; return; }
+    const pull = Math.min(dy * 0.5, MAX_PULL);
+    indicator.style.height = pull + 'px';
+    const shouldArm = pull > THRESHOLD;
+    if(shouldArm !== armed){
+      armed = shouldArm;
+      indicator.classList.toggle('armed', armed);
+      pullText.textContent = armed ? 'Release to refresh' : 'Pull to refresh';
+    }
+    e.preventDefault();
+  }, {passive:false});
+
+  main.addEventListener('touchend', () => {
+    if(!pulling || refreshing){ pulling = false; return; }
+    pulling = false;
+    if(armed){
+      refreshing = true;
+      indicator.classList.add('refreshing');
+      indicator.classList.remove('armed');
+      pullText.textContent = 'Refreshing…';
+      indicator.style.height = '48px';
+      checkForUpdate();
+      loadData(true).finally(() => {
+        indicator.style.height = '0px';
+        indicator.classList.remove('refreshing');
+        pullText.textContent = 'Pull to refresh';
+        refreshing = false;
+      });
+    } else {
+      indicator.style.height = '0px';
+    }
+    armed = false;
+  });
+})();
 
 if(window.navigator.standalone){
   document.getElementById('tip').style.display = 'none';
