@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="app-build" content="20260831181057">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -236,6 +237,23 @@ const RECALL_CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/
 const NOTES_API_URL = "https://script.google.com/macros/s/AKfycbxIXaHyejXPn4LOzUaeHcPRmc4c0RFM5NtWqNRfjNwgBh3H0AoIqutwz0lgvq1JoAId/exec";
 const CACHE_KEY = "ecotuned_tracker_cache_v1";
 const AUTHOR_KEY = "ecotuned_tracker_author";
+const APP_BUILD = "20260831181057";
+
+// iOS home-screen (standalone) PWAs aggressively cache the app shell (HTML/JS/CSS) and
+// don't automatically pick up a new deploy just because the data refreshes. This checks
+// the live page for a newer build id and force-reloads so new features/fixes actually show
+// up without the user having to force-quit the app. Non-critical: any failure here is silent.
+async function checkForUpdate(){
+  try{
+    const res = await fetch(location.pathname + '?v=' + Date.now(), {cache:'no-store'});
+    if(!res.ok) return;
+    const html = await res.text();
+    const m = html.match(/name="app-build" content="([^"]+)"/);
+    if(m && m[1] && m[1] !== APP_BUILD){
+      location.reload();
+    }
+  } catch(e){ /* ignore, non-critical */ }
+}
 
 // Apps Script web apps occasionally return a transient 503 or drop the
 // connection (cold start / infra hiccup). Retry once after a short delay
@@ -1535,7 +1553,7 @@ function closeSheet(){
 
 document.getElementById('overlay').addEventListener('click', closeSheet);
 document.getElementById('closeSheet').addEventListener('click', closeSheet);
-document.getElementById('refreshBtn').addEventListener('click', () => loadData(true));
+document.getElementById('refreshBtn').addEventListener('click', () => { checkForUpdate(); loadData(true); });
 document.getElementById('newCaseBtn').addEventListener('click', openNewCaseForm);
 
 document.querySelectorAll('#segmented button').forEach(btn => {
@@ -1558,7 +1576,7 @@ if(window.navigator.standalone){
 
 loadData(false);
 // Refresh automatically whenever the app regains focus / becomes visible (e.g. reopened from home screen)
-document.addEventListener('visibilitychange', () => { if(!document.hidden) loadData(false); });
+document.addEventListener('visibilitychange', () => { if(!document.hidden){ checkForUpdate(); loadData(false); } });
 </script>
 </body>
 </html>
