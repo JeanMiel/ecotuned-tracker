@@ -833,6 +833,7 @@ function makeRecord(r){
     tasks: norm(r['Tasks']),
     notes: norm(r['Last update']),
     mileage: formatMileage(r['Mileage']),
+    lastLocation: norm(r['Last Location']),
     caseStatus: norm(r['Case status']),
     subAssembly: norm(r['Sub Assembly']),
     symptom: norm(r['Symptom']),
@@ -1216,6 +1217,7 @@ function openSheet(r){
     </div>
     <div class="field"><div class="fl">Initial Complaint</div><div class="fv">${escapeHtml(r.complaint) || '—'}</div></div>
     <div class="field"><div class="fl">Tasks</div><div class="fv">${escapeHtml(r.tasks) || '—'}</div></div>
+    ${r.lastLocation ? `<div class="field"><div class="fl">Last Known Location</div><div class="fv"><a href="${escapeHtml(r.lastLocation)}" target="_blank" rel="noopener">View on map</a></div></div>` : ''}
     <div class="field"><div class="fl">Update Log</div><div class="fv" id="notesLog">${renderNotesLog(r.notes)}</div></div>
     <div class="statusbox">
       <div class="fl">Update status</div>
