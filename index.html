@@ -59,6 +59,13 @@
   .chip.active{background:var(--blue); color:#fff;}
   .chip.status-up.active{background:var(--green);}
   .chip.status-down.active{background:var(--red);}
+  .chip.gen-mk3.active{background:#2563eb;}
+  .chip.gen-mk4.active{background:#7c3aed;}
+
+  .gentag{display:inline-block; font-size:10px; font-weight:700; padding:2px 6px; border-radius:6px;
+    vertical-align:middle; letter-spacing:.2px;}
+  .gentag.mk3{background:#dbeafe; color:#1e40af;}
+  .gentag.mk4{background:#ede9fe; color:#6b21a8;}
 
   main{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:10px 16px calc(env(safe-area-inset-bottom) + 16px);}
   .empty{text-align:center; color:var(--sub); margin-top:60px; font-size:14px;}
@@ -834,6 +841,7 @@ function makeRecord(r){
     notes: norm(r['Last update']),
     mileage: formatMileage(r['Mileage']),
     lastLocation: norm(r['Last Location']),
+    generation: norm(r['Generation']),
     caseStatus: norm(r['Case status']),
     subAssembly: norm(r['Sub Assembly']),
     symptom: norm(r['Symptom']),
@@ -847,7 +855,7 @@ function makeRecord(r){
 
 let RECORDS = [];
 let RECALL_MAP = {};
-const state = { seg:'active', search:'', loc:'all', status:'all', tech:'all' };
+const state = { seg:'active', search:'', loc:'all', status:'all', tech:'all', gen:'all' };
 
 function buildRecordsFromCsv(text){
   const objs = csvToObjects(text);
@@ -957,6 +965,7 @@ function renderFilters(){
   const locChip = (l, label) => `<button class="chip ${state.loc===l?'active':''}" data-type="loc" data-val="${l}">${label || l}</button>`;
   const statusChip = (s, label) => `<button class="chip status-${s} ${state.status===s?'active':''}" data-type="status" data-val="${s}">${label}</button>`;
   const techChip = (t) => `<button class="chip ${state.tech===t?'active':''}" data-type="tech" data-val="${t}">${t}</button>`;
+  const genChip = (g) => `<button class="chip gen-${g.toLowerCase()} ${state.gen===g?'active':''}" data-type="gen" data-val="${g}">${g}</button>`;
 
   // Single row, fixed order: All Locations, North, South, Up, Down, Emigdio, Jovanni, David, then low-priority locations last
   const chips = [
@@ -964,6 +973,8 @@ function renderFilters(){
     ...primaryLocs.map(l => locChip(l)),
     statusChip('up', 'Up'),
     statusChip('down', 'Down'),
+    genChip('MK3'),
+    genChip('MK4'),
     techChip('Emigdio'),
     techChip('Jovanni'),
     techChip('David'),
@@ -988,6 +999,7 @@ function matches(r){
   if(state.loc !== 'all' && r.loc !== state.loc) return false;
   if(state.status !== 'all' && r.status !== state.status) return false;
   if(state.tech !== 'all' && !r.techs.includes(state.tech)) return false;
+  if(state.gen !== 'all' && r.generation !== state.gen) return false;
   if(state.search){
     const q = state.search.toLowerCase();
     const hay = [r.customer, r.bus, r.caseNum, r.complaint, r.tasks, r.notes].join(' ').toLowerCase();
@@ -1029,7 +1041,7 @@ function renderList(){
         <div class="row1">
           <div>
             <div class="idline">Case #${escapeHtml(r.caseNum)} &middot; ${escapeHtml(r.date)}</div>
-            <div class="bus">${escapeHtml(r.bus)}</div>
+            <div class="bus">${escapeHtml(r.bus)}${r.generation ? ` <span class="gentag ${r.generation.toLowerCase()}">${escapeHtml(r.generation)}</span>` : ''}</div>
           </div>
           <span class="pill ${pillClass}">${escapeHtml(r.statusLabel)}</span>
         </div>
@@ -1213,6 +1225,7 @@ function openSheet(r){
       <span class="badge">${escapeHtml(r.loc)}</span>
       <span class="badge">${r.bucket === 'closed' ? 'Closed' : 'Active'}${r.caseStatus ? ' · '+escapeHtml(r.caseStatus) : ''}</span>
       ${r.mileage ? `<span class="badge">${escapeHtml(r.mileage)}</span>` : ''}
+      ${r.generation ? `<span class="gentag ${r.generation.toLowerCase()}">${escapeHtml(r.generation)}</span>` : ''}
       ${r.techs.map(t => `<span class="badge">${t}</span>`).join('')}
     </div>
     <div class="field"><div class="fl">Initial Complaint</div><div class="fv">${escapeHtml(r.complaint) || '—'}</div></div>
