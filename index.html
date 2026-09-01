@@ -1309,11 +1309,11 @@ function renderAiLog(){
   const log = document.getElementById('aiLog');
   if(!log) return;
   if(AI_CONVERSATION.length === 0){
-    log.innerHTML = '<div class="ai-empty">Ask the AI to analyze this case, or ask it a question about the bus\'s history.</div>';
+    log.innerHTML = '<div class="ai-empty">Ask Jean-Miel to analyze this case, or ask him a question about the bus\'s history.</div>';
     return;
   }
   log.innerHTML = AI_CONVERSATION.map(m => {
-    if(m.role === 'loading') return '<div class="ai-msg loading">Thinking\u2026</div>';
+    if(m.role === 'loading') return '<div class="ai-msg loading">Jean-Miel is thinking\u2026</div>';
     return `<div class="ai-msg ${m.role}">${escapeHtml(m.text)}</div>`;
   }).join('');
   log.scrollTop = log.scrollHeight;
@@ -1344,7 +1344,7 @@ async function aiRequest(r, question){
   } catch(e){
     AI_CONVERSATION = AI_CONVERSATION.filter(m => m.role !== 'loading');
     renderAiLog();
-    msgEl.textContent = 'AI request failed: ' + e.message;
+    msgEl.textContent = 'Jean-Miel request failed: ' + e.message;
     msgEl.className = 'notemsg err';
   } finally {
     AI_BUSY = false;
@@ -1411,13 +1411,13 @@ function openSheet(r, backTo){
     ].filter(Boolean).join('')}</div></div>` : ''}
     <div class="field"><div class="fl">Update Log</div><div class="fv" id="notesLog">${renderNotesLog(r.notes)}</div></div>
     <div class="aibox">
-      <div class="fl">AI Case Analysis</div>
-      <div class="ai-log" id="aiLog"><div class="ai-empty">Ask the AI to analyze this case, or ask it a question about the bus's history.</div></div>
+      <div class="fl">Jean-Miel</div>
+      <div class="ai-log" id="aiLog"><div class="ai-empty">Ask Jean-Miel to analyze this case, or ask him a question about the bus's history.</div></div>
       <div class="ai-actions">
-        <button id="aiAnalyzeBtn" type="button">Analyze this case</button>
+        <button id="aiAnalyzeBtn" type="button">Ask Jean-Miel to analyze</button>
       </div>
       <div class="ai-ask-row">
-        <input type="text" id="aiQuestionInput" placeholder="Ask a question about this case or bus...">
+        <input type="text" id="aiQuestionInput" placeholder="Ask Jean-Miel a question about this case or bus...">
         <button id="aiAskBtn" type="button">Ask</button>
       </div>
       <span class="notemsg" id="aiMsg"></span>
