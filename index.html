@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="1788206838872">
+<meta name="app-build" content="1788267903045">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -1424,6 +1424,16 @@ async function submitStatus(){
   const component = componentEl.value.trim();
   const solution = solutionEl.value;
   const rootCause = rootCauseEl.value.trim();
+  if(bucket === 'Closed'){
+    const recall = RECALL_MAP[r.bus];
+    if(recall && recall.done === false){
+      msgEl.textContent = 'Power Steering recall must be confirmed before this case can be closed (see banner above).';
+      msgEl.className = 'notemsg err';
+      const banner = document.getElementById('recallBanner');
+      if(banner) banner.scrollIntoView({behavior:'smooth', block:'center'});
+      return;
+    }
+  }
   btn.disabled = true;
   msgEl.textContent = 'Saving…';
   msgEl.className = 'notemsg';
