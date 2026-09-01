@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="1788268880063">
+<meta name="app-build" content="1788272490886">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -136,6 +136,8 @@
   .field .fv{font-size:14.5px; line-height:1.45; white-space:pre-wrap;}
   .badgerow{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
   .badge{font-size:12px; font-weight:600; padding:4px 10px; border-radius:8px; background:var(--chip);}
+  .badge.tstatus-online{background:rgba(52,199,89,0.14); color:#1a7a34;}
+  .badge.tstatus-offline{background:rgba(255,59,48,0.12); color:#b42318;}
 
   .notebox{margin-top:16px; background:var(--bg); border-radius:12px; padding:12px;}
   .notebox .fl{font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--sub); font-weight:700; margin-bottom:6px;}
@@ -877,6 +879,8 @@ function makeRecord(r){
     swRear: norm(r['SW Rear']),
     swScreen: norm(r['SW Screen']),
     swBuild: norm(r['SW Build']),
+    telemetryStatus: norm(r['Telemetry Status']),
+    lastTelemetry: norm(r['Last Telemetry Contact']),
     caseStatus: norm(r['Case status']),
     subAssembly: norm(r['Sub Assembly']),
     symptom: norm(r['Symptom']),
@@ -1266,6 +1270,7 @@ function openSheet(r, backTo){
     ` : ''}
     <div class="badgerow">
       <span class="pill ${pillClass}">${escapeHtml(r.statusLabel)}</span>
+      ${r.telemetryStatus ? `<span class="badge tstatus-${r.telemetryStatus.toLowerCase()}">${escapeHtml(r.telemetryStatus)}</span>` : ''}
       <span class="badge">${escapeHtml(r.loc)}</span>
       <span class="badge">${r.bucket === 'closed' ? 'Closed' : 'Active'}${r.caseStatus ? ' · '+escapeHtml(r.caseStatus) : ''}</span>
       ${r.mileage ? `<span class="badge">${escapeHtml(r.mileage)}</span>` : ''}
@@ -1275,6 +1280,7 @@ function openSheet(r, backTo){
     <div class="field"><div class="fl">Initial Complaint</div><div class="fv">${escapeHtml(r.complaint) || '—'}</div></div>
     <div class="field"><div class="fl">Tasks</div><div class="fv">${escapeHtml(r.tasks) || '—'}</div></div>
     ${r.lastLocation ? `<div class="field"><div class="fl">Last Known Location</div><div class="fv"><a href="${escapeHtml(r.lastLocation)}" target="_blank" rel="noopener">View on map</a></div></div>` : ''}
+    ${r.lastTelemetry ? `<div class="field"><div class="fl">Last Telemetry Contact</div><div class="fv">${escapeHtml(r.lastTelemetry)}</div></div>` : ''}
     ${closedHistory.length ? `<div class="field"><div class="fl">Case History (${closedHistory.length})</div><div class="fv"><div class="history-list">${closedHistory.map(h => `<a href="#" class="history-link" data-idx="${RECORDS.indexOf(h)}"><span class="history-case">Case #${escapeHtml(h.caseNum)} &middot; ${escapeHtml(h.date)}</span><span class="history-complaint">${escapeHtml(h.complaint || 'No complaint logged')}</span></a>`).join('')}</div></div></div>` : ''}
     ${(r.swInternal || r.swFront || r.swRear || r.swScreen || r.swBuild) ? `<div class="field"><div class="fl">Software Versions</div><div class="fv swversions">${[
       r.swInternal ? `<span class="swver${r.swInternal===LATEST_MK4_SW?' latest':''}">Internal <b>${escapeHtml(r.swInternal)}</b></span>` : '',
