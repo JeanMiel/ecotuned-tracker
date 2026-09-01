@@ -1442,6 +1442,8 @@ function openSheet(r, backTo){
       </div>
       <label>Case status</label>
       <input type="text" id="caseStatusInput" value="${escapeHtml(r.caseStatus)}" placeholder="e.g. Open, Waiting for parts">
+      <label>Customer</label>
+      <input type="text" id="customerInput" value="${escapeHtml(r.customer === 'Unknown' ? '' : r.customer)}" placeholder="Customer name">
       <label>Assigned tech(s)</label>
       <div class="techrow">
         <label><input type="checkbox" id="techEmigdio" ${r.techs.includes('Emigdio')?'checked':''}> Emigdio</label>
@@ -1592,6 +1594,7 @@ async function submitStatus(){
   const statusEl = document.getElementById('statusSelect');
   const bucketEl = document.getElementById('bucketSelect');
   const caseStatusEl = document.getElementById('caseStatusInput');
+  const customerEl = document.getElementById('customerInput');
   const subAssemblyEl = document.getElementById('subAssemblySelect');
   const symptomEl = document.getElementById('symptomInput');
   const componentEl = document.getElementById('componentInput');
@@ -1602,6 +1605,7 @@ async function submitStatus(){
   const status = statusEl.value;
   const bucket = bucketEl.value;
   const caseStatus = caseStatusEl.value.trim();
+  const customer = customerEl.value.trim();
   const subAssembly = subAssemblyEl.value;
   const symptom = symptomEl.value.trim();
   const component = componentEl.value.trim();
@@ -1625,13 +1629,15 @@ async function submitStatus(){
   msgEl.className = 'notemsg';
   try{
     const res = await postToApi({ action: 'status', rowIndex: r.sheetRow, caseNum: r.caseNum, status, bucket, caseStatus,
-      subAssembly, symptom, component, solution, rootCause, emigdio, david, jovanni });
+      customer, subAssembly, symptom, component, solution, rootCause, emigdio, david, jovanni });
     const data = await res.json();
     if(!data.ok) throw new Error(data.error || 'Unknown error');
     r.status = status.toLowerCase();
     r.statusLabel = status;
     r.bucket = bucket.toLowerCase();
     r.caseStatus = caseStatus;
+    r.customer = customer || 'Unknown';
+    document.getElementById('sheetSub').textContent = `Case #${r.caseNum} · ${r.customer} · ${r.date}`;
     r.subAssembly = subAssembly;
     r.symptom = symptom;
     r.component = component;
