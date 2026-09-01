@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="1788272490886">
+<meta name="app-build" content="1788272990180">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -1270,7 +1270,7 @@ function openSheet(r, backTo){
     ` : ''}
     <div class="badgerow">
       <span class="pill ${pillClass}">${escapeHtml(r.statusLabel)}</span>
-      ${r.telemetryStatus ? `<span class="badge tstatus-${r.telemetryStatus.toLowerCase()}">${escapeHtml(r.telemetryStatus)}</span>` : ''}
+      ${r.telemetryStatus ? `<span class="badge tstatus-${r.telemetryStatus.toLowerCase()}">Telemetry ${escapeHtml(r.telemetryStatus)}</span>` : ''}
       <span class="badge">${escapeHtml(r.loc)}</span>
       <span class="badge">${r.bucket === 'closed' ? 'Closed' : 'Active'}${r.caseStatus ? ' · '+escapeHtml(r.caseStatus) : ''}</span>
       ${r.mileage ? `<span class="badge">${escapeHtml(r.mileage)}</span>` : ''}
