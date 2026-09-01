@@ -6,12 +6,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="1788274192891">
+<meta name="app-build" content="1788282014867">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
     --bg:#f2f2f7; --card:#ffffff; --text:#1c1c1e; --sub:#6e6e73;
-    --green:#34c759; --red:#ff3b30; --blue:#007aff; --amber:#ff9500;
+    --green:#34c759; --red:#ff3b30; --blue:#007aff; --amber:#ff9500; --purple:#af52de;
     --sep:#e5e5ea; --chip:#e9e9ec;
     color-scheme: light;
   }
@@ -180,6 +180,28 @@
   #saveStatusBtn{background:var(--green); color:#fff; border:none; padding:8px 16px; border-radius:8px;
     font-size:14px; font-weight:600; font-family:inherit;}
   #saveStatusBtn:disabled{opacity:0.5;}
+
+  .aibox{margin-top:16px; background:var(--bg); border-radius:12px; padding:12px;}
+  .aibox .fl{font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--purple); font-weight:700; margin-bottom:6px;}
+  .aibox .notemsg{font-size:12px; color:var(--sub); margin-right:auto;}
+  .aibox .notemsg.err{color:var(--red);}
+  .aibox .notemsg.ok{color:var(--green);}
+  .ai-log{display:flex; flex-direction:column; gap:8px; margin-bottom:8px;}
+  .ai-msg{padding:9px 12px; border-radius:12px; font-size:13.5px; line-height:1.45; white-space:pre-wrap; word-wrap:break-word;}
+  .ai-msg.user{background:var(--chip); align-self:flex-end; max-width:88%; border-bottom-right-radius:4px;}
+  .ai-msg.assistant{background:var(--card); border:1px solid var(--sep); align-self:flex-start; max-width:94%; border-bottom-left-radius:4px;}
+  .ai-msg.loading{color:var(--sub); font-style:italic; background:transparent; border:none; padding:2px 2px;}
+  .ai-empty{font-size:12.5px; color:var(--sub); font-style:italic;}
+  .ai-actions{display:flex; justify-content:flex-start;}
+  #aiAnalyzeBtn{background:var(--purple); color:#fff; border:none; padding:8px 16px; border-radius:8px;
+    font-size:14px; font-weight:600; font-family:inherit;}
+  #aiAnalyzeBtn:disabled{opacity:0.5;}
+  .ai-ask-row{display:flex; gap:8px; margin-top:10px;}
+  .ai-ask-row input{flex:1; min-width:0; border:1px solid var(--sep); background:var(--card); border-radius:8px;
+    padding:8px 10px; font-size:14px; font-family:inherit;}
+  #aiAskBtn{background:var(--purple); color:#fff; border:none; padding:8px 14px; border-radius:8px;
+    font-size:14px; font-weight:600; font-family:inherit; flex-shrink:0;}
+  #aiAskBtn:disabled{opacity:0.5;}
 
   .newcaseform .fieldrow{margin-top:12px;}
   .newcaseform label{display:block; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--sub); font-weight:700; margin-bottom:4px;}
@@ -1176,6 +1198,8 @@ async function deleteCase(r){
 
 let CURRENT_RECORD = null;
 let SELECTED_PHOTOS = [];
+let AI_CONVERSATION = [];
+let AI_BUSY = false;
 
 function resizeImageFile(file, maxDim, quality){
   maxDim = maxDim || 1600;
@@ -1236,9 +1260,103 @@ async function handlePhotoInput(e){
   e.target.value = '';
 }
 
+function aiTruncate(s, n){
+  s = (s || '').toString();
+  return s.length > n ? s.slice(0, n) + '\u2026' : s;
+}
+
+function buildAiContext(r){
+  const lines = [];
+  lines.push(`Bus: ${r.bus}${r.generation ? ' ('+r.generation+')' : ''}`);
+  lines.push(`Case #${r.caseNum} \u2014 ${r.statusLabel}, ${r.bucket === 'closed' ? 'Closed' : 'Active'}${r.caseStatus ? ' ('+r.caseStatus+')' : ''}`);
+  if(r.customer || r.loc) lines.push(`Location: ${[r.customer, r.loc].filter(Boolean).join(' \u00b7 ')}`);
+  if(r.mileage) lines.push(`Mileage: ${r.mileage}`);
+  lines.push(`Initial complaint: ${r.complaint || '(none logged)'}`);
+  if(r.tasks) lines.push(`Tasks: ${r.tasks}`);
+  const sw = [
+    r.swInternal ? `Internal ${r.swInternal}` : '',
+    r.swFront ? `Front ${r.swFront}` : '',
+    r.swRear ? `Rear ${r.swRear}` : '',
+    r.swScreen ? `Screen ${r.swScreen}` : '',
+    r.swBuild ? `Build ${r.swBuild}` : ''
+  ].filter(Boolean).join(', ');
+  if(sw) lines.push(`Software versions: ${sw}`);
+  if(r.telemetryStatus) lines.push(`Telemetry: ${r.telemetryStatus}${r.lastTelemetry ? ' (last contact '+r.lastTelemetry+')' : ''}`);
+  if(r.bucket === 'closed'){
+    const res = [r.subAssembly, r.symptom, r.component, r.solution, r.rootCause].filter(Boolean).join(' / ');
+    if(res) lines.push(`Resolution on file: ${res}`);
+  }
+  if(r.notes){
+    const cleanNotes = r.notes.toString().split('\n').filter(l => l.indexOf('IMG::') !== 0).join('\n');
+    if(cleanNotes) lines.push(`Update log:\n${aiTruncate(cleanNotes, 1500)}`);
+  }
+  const history = RECORDS.filter(x => x.bus === r.bus && x !== r)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    .slice(0, 8);
+  if(history.length){
+    lines.push('Prior cases on record for this bus:');
+    history.forEach(h => {
+      const res = [h.subAssembly, h.symptom, h.component, h.solution, h.rootCause].filter(Boolean).join(' / ');
+      lines.push(`- [${h.date}] Case #${h.caseNum} (${h.bucket}): ${aiTruncate(h.complaint, 200)}${res ? ' \u2192 ' + res : ''}`);
+    });
+  } else {
+    lines.push('No prior cases on record for this bus.');
+  }
+  return aiTruncate(lines.join('\n'), 6000);
+}
+
+function renderAiLog(){
+  const log = document.getElementById('aiLog');
+  if(!log) return;
+  if(AI_CONVERSATION.length === 0){
+    log.innerHTML = '<div class="ai-empty">Ask the AI to analyze this case, or ask it a question about the bus\'s history.</div>';
+    return;
+  }
+  log.innerHTML = AI_CONVERSATION.map(m => {
+    if(m.role === 'loading') return '<div class="ai-msg loading">Thinking\u2026</div>';
+    return `<div class="ai-msg ${m.role}">${escapeHtml(m.text)}</div>`;
+  }).join('');
+  log.scrollTop = log.scrollHeight;
+}
+
+async function aiRequest(r, question){
+  if(AI_BUSY) return;
+  AI_BUSY = true;
+  const analyzeBtn = document.getElementById('aiAnalyzeBtn');
+  const askBtn = document.getElementById('aiAskBtn');
+  const msgEl = document.getElementById('aiMsg');
+  analyzeBtn.disabled = true;
+  askBtn.disabled = true;
+  msgEl.textContent = '';
+  msgEl.className = 'notemsg';
+  AI_CONVERSATION.push({ role: 'user', text: question });
+  AI_CONVERSATION.push({ role: 'loading' });
+  renderAiLog();
+  try{
+    const context = buildAiContext(r);
+    const messages = AI_CONVERSATION.filter(m => m.role === 'user' || m.role === 'assistant');
+    const res = await postToApi({ action: 'aiAsk', rowIndex: r.sheetRow, caseNum: r.caseNum, context, messages });
+    const data = await res.json();
+    AI_CONVERSATION = AI_CONVERSATION.filter(m => m.role !== 'loading');
+    if(!data.ok) throw new Error(data.error || 'Unknown error');
+    AI_CONVERSATION.push({ role: 'assistant', text: data.answer || '(no response)' });
+    renderAiLog();
+  } catch(e){
+    AI_CONVERSATION = AI_CONVERSATION.filter(m => m.role !== 'loading');
+    renderAiLog();
+    msgEl.textContent = 'AI request failed: ' + e.message;
+    msgEl.className = 'notemsg err';
+  } finally {
+    AI_BUSY = false;
+    analyzeBtn.disabled = false;
+    askBtn.disabled = false;
+  }
+}
+
 function openSheet(r, backTo){
   CURRENT_RECORD = r;
   SELECTED_PHOTOS = [];
+  AI_CONVERSATION = [];
   const backBtn = document.getElementById('backBtn');
   if(backTo){
     backBtn.style.display = '';
@@ -1292,6 +1410,18 @@ function openSheet(r, backTo){
       r.swBuild ? `<span class="swver${r.swBuild===LATEST_MK3_BUILD?' latest':''}">Build <b>${escapeHtml(r.swBuild)}</b></span>` : ''
     ].filter(Boolean).join('')}</div></div>` : ''}
     <div class="field"><div class="fl">Update Log</div><div class="fv" id="notesLog">${renderNotesLog(r.notes)}</div></div>
+    <div class="aibox">
+      <div class="fl">AI Case Analysis</div>
+      <div class="ai-log" id="aiLog"><div class="ai-empty">Ask the AI to analyze this case, or ask it a question about the bus's history.</div></div>
+      <div class="ai-actions">
+        <button id="aiAnalyzeBtn" type="button">Analyze this case</button>
+      </div>
+      <div class="ai-ask-row">
+        <input type="text" id="aiQuestionInput" placeholder="Ask a question about this case or bus...">
+        <button id="aiAskBtn" type="button">Ask</button>
+      </div>
+      <span class="notemsg" id="aiMsg"></span>
+    </div>
     <div class="statusbox">
       <div class="fl">Update status</div>
       <div class="row">
@@ -1366,6 +1496,20 @@ function openSheet(r, backTo){
   `;
   document.getElementById('addNoteBtn').addEventListener('click', submitNote);
   document.getElementById('saveStatusBtn').addEventListener('click', submitStatus);
+  document.getElementById('aiAnalyzeBtn').addEventListener('click', () => aiRequest(r, 'Analyze this case: what are the likely root causes, what relevant patterns do you see in this bus\'s history, and what should the technician try next?'));
+  document.getElementById('aiAskBtn').addEventListener('click', () => {
+    const input = document.getElementById('aiQuestionInput');
+    const q = input.value.trim();
+    if(!q) return;
+    input.value = '';
+    aiRequest(r, q);
+  });
+  document.getElementById('aiQuestionInput').addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      document.getElementById('aiAskBtn').click();
+    }
+  });
   document.getElementById('bucketSelect').addEventListener('change', (e) => {
     document.getElementById('closeFields').style.display = e.target.value === 'Closed' ? '' : 'none';
   });
