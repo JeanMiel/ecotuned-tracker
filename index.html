@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="1788267903045">
+<meta name="app-build" content="1788268535878">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -77,6 +77,11 @@
   .swver b{font-size:12px; color:var(--text,#111827); font-weight:700;}
   .swver.latest{background:rgba(52,199,89,0.14); color:#1a7a34;}
   .swver.latest b{color:#1a7a34;}
+
+  .history-list{display:flex; flex-direction:column; gap:6px;}
+  .history-link{display:block; background:var(--bg); border-radius:8px; padding:8px 10px; text-decoration:none;}
+  .history-case{display:block; font-size:12.5px; font-weight:700; color:var(--blue);}
+  .history-complaint{display:block; font-size:12.5px; color:var(--sub); margin-top:2px; line-height:1.3;}
 
   main{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0 16px calc(env(safe-area-inset-bottom) + 16px);}
   .pull-indicator{height:0; overflow:hidden; display:flex; align-items:center; justify-content:center; gap:6px;
@@ -1231,6 +1236,7 @@ function openSheet(r){
   const savedAuthor = localStorage.getItem(AUTHOR_KEY) || '';
   const recall = RECALL_MAP[r.bus];
   const needsRecallConfirm = !!(recall && recall.done === false);
+  const closedHistory = (r.bucket === 'active' && r.bus) ? RECORDS.filter(x => x.bus === r.bus && x.bucket === 'closed' && x !== r) : [];
   document.getElementById('sheetbody').innerHTML = `
     ${needsRecallConfirm ? `
     <div class="recallbanner" id="recallBanner">
@@ -1258,6 +1264,7 @@ function openSheet(r){
     <div class="field"><div class="fl">Initial Complaint</div><div class="fv">${escapeHtml(r.complaint) || '—'}</div></div>
     <div class="field"><div class="fl">Tasks</div><div class="fv">${escapeHtml(r.tasks) || '—'}</div></div>
     ${r.lastLocation ? `<div class="field"><div class="fl">Last Known Location</div><div class="fv"><a href="${escapeHtml(r.lastLocation)}" target="_blank" rel="noopener">View on map</a></div></div>` : ''}
+    ${closedHistory.length ? `<div class="field"><div class="fl">Case History (${closedHistory.length})</div><div class="fv"><div class="history-list">${closedHistory.map(h => `<a href="#" class="history-link" data-idx="${RECORDS.indexOf(h)}"><span class="history-case">Case #${escapeHtml(h.caseNum)} &middot; ${escapeHtml(h.date)}</span><span class="history-complaint">${escapeHtml(h.complaint || 'No complaint logged')}</span></a>`).join('')}</div></div></div>` : ''}
     ${(r.swInternal || r.swFront || r.swRear || r.swScreen || r.swBuild) ? `<div class="field"><div class="fl">Software Versions</div><div class="fv swversions">${[
       r.swInternal ? `<span class="swver${r.swInternal===LATEST_MK4_SW?' latest':''}">Internal <b>${escapeHtml(r.swInternal)}</b></span>` : '',
       r.swFront ? `<span class="swver${r.swFront===LATEST_MK4_SW?' latest':''}">Front <b>${escapeHtml(r.swFront)}</b></span>` : '',
@@ -1342,6 +1349,13 @@ function openSheet(r){
   if(needsRecallConfirm){
     document.getElementById('confirmRecallBtn').addEventListener('click', () => submitRecallConfirm(r));
   }
+  document.querySelectorAll('.history-link').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const idx = parseInt(a.dataset.idx, 10);
+      if(!isNaN(idx) && RECORDS[idx]) openSheet(RECORDS[idx]);
+    });
+  });
   initCombo('symptomInput', 'symptomList', SYMPTOM_OPTIONS);
   initCombo('componentInput', 'componentList', COMPONENT_OPTIONS);
   initCombo('rootCauseInput', 'rootCauseList', ROOT_CAUSE_OPTIONS);
