@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="1788272990180">
+<meta name="app-build" content="1788274192891">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -188,6 +188,8 @@
   .newcaseform textarea{min-height:60px;}
   .newcaseform .techrow{display:flex; gap:14px; margin-top:4px;}
   .newcaseform .techrow label{display:flex; align-items:center; gap:6px; font-size:13px; text-transform:none; font-weight:500; color:var(--text); margin-bottom:0;}
+  .statusbox .techrow{display:flex; gap:14px; margin-top:4px; flex-wrap:wrap;}
+  .statusbox .techrow label{display:flex; align-items:center; gap:6px; font-size:13px; text-transform:none; font-weight:500; color:var(--text); margin-bottom:0;}
   .newcaseform .submitrow{display:flex; justify-content:flex-end; gap:8px; margin-top:16px; align-items:center;}
   .newcaseform .formmsg{font-size:12px; color:var(--sub); margin-right:auto;}
   .newcaseform .formmsg.err{color:var(--red);}
@@ -1310,6 +1312,12 @@ function openSheet(r, backTo){
       </div>
       <label>Case status</label>
       <input type="text" id="caseStatusInput" value="${escapeHtml(r.caseStatus)}" placeholder="e.g. Open, Waiting for parts">
+      <label>Assigned tech(s)</label>
+      <div class="techrow">
+        <label><input type="checkbox" id="techEmigdio" ${r.techs.includes('Emigdio')?'checked':''}> Emigdio</label>
+        <label><input type="checkbox" id="techDavid" ${r.techs.includes('David')?'checked':''}> David</label>
+        <label><input type="checkbox" id="techJovanni" ${r.techs.includes('Jovanni')?'checked':''}> Jovanni</label>
+      </div>
       <div class="closefields" id="closeFields" style="${r.bucket==='closed' ? '' : 'display:none;'}">
         <div class="fl" style="margin-top:10px;">Closing details</div>
         <label>Sub Assembly</label>
@@ -1455,6 +1463,9 @@ async function submitStatus(){
   const component = componentEl.value.trim();
   const solution = solutionEl.value;
   const rootCause = rootCauseEl.value.trim();
+  const emigdio = document.getElementById('techEmigdio').checked;
+  const david = document.getElementById('techDavid').checked;
+  const jovanni = document.getElementById('techJovanni').checked;
   if(bucket === 'Closed'){
     const recall = RECALL_MAP[r.bus];
     if(recall && recall.done === false){
@@ -1470,7 +1481,7 @@ async function submitStatus(){
   msgEl.className = 'notemsg';
   try{
     const res = await postToApi({ action: 'status', rowIndex: r.sheetRow, caseNum: r.caseNum, status, bucket, caseStatus,
-      subAssembly, symptom, component, solution, rootCause });
+      subAssembly, symptom, component, solution, rootCause, emigdio, david, jovanni });
     const data = await res.json();
     if(!data.ok) throw new Error(data.error || 'Unknown error');
     r.status = status.toLowerCase();
@@ -1482,6 +1493,7 @@ async function submitStatus(){
     r.component = component;
     r.solution = solution;
     r.rootCause = rootCause;
+    r.techs = TECHS.filter(t => ({Emigdio:emigdio, David:david, Jovanni:jovanni})[t]);
     msgEl.textContent = 'Saved.';
     msgEl.className = 'notemsg ok';
     loadData(false);
