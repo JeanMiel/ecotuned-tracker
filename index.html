@@ -162,8 +162,9 @@
   .statusbox .row{display:flex; gap:8px; margin-bottom:8px;}
   .statusbox .row > div{flex:1;}
   .statusbox label{display:block; font-size:11px; color:var(--sub); margin-bottom:3px;}
-  .statusbox select, .statusbox input[type=text]{width:100%; border:1px solid var(--sep); background:var(--card);
+  .statusbox select, .statusbox input[type=text], .statusbox textarea{width:100%; border:1px solid var(--sep); background:var(--card);
     border-radius:8px; padding:8px 10px; font-size:14px; font-family:inherit;}
+  .statusbox textarea{min-height:60px; resize:vertical;}
   .statusbox .noterow{display:flex; justify-content:flex-end; gap:8px; margin-top:8px; align-items:center;}
   .closefields{margin-top:6px;}
   .closefields label{margin-top:8px;}
@@ -1398,7 +1399,6 @@ function openSheet(r, backTo){
       ${r.techs.map(t => `<span class="badge">${t}</span>`).join('')}
     </div>
     <div class="field"><div class="fl">Initial Complaint</div><div class="fv">${escapeHtml(r.complaint) || '—'}</div></div>
-    <div class="field"><div class="fl">Tasks</div><div class="fv">${escapeHtml(r.tasks) || '—'}</div></div>
     ${r.lastLocation ? `<div class="field"><div class="fl">Last Known Location</div><div class="fv"><a href="${escapeHtml(r.lastLocation)}" target="_blank" rel="noopener">View on map</a></div></div>` : ''}
     ${r.lastTelemetry ? `<div class="field"><div class="fl">Last Telemetry Contact</div><div class="fv">${escapeHtml(r.lastTelemetry)}</div></div>` : ''}
     ${closedHistory.length ? `<div class="field"><div class="fl">Case History (${closedHistory.length})</div><div class="fv"><div class="history-list">${closedHistory.map(h => `<a href="#" class="history-link" data-idx="${RECORDS.indexOf(h)}"><span class="history-case">Case #${escapeHtml(h.caseNum)} &middot; ${escapeHtml(h.date)}</span><span class="history-complaint">${escapeHtml(h.complaint || 'No complaint logged')}</span></a>`).join('')}</div></div></div>` : ''}
@@ -1444,6 +1444,8 @@ function openSheet(r, backTo){
       <input type="text" id="caseStatusInput" value="${escapeHtml(r.caseStatus)}" placeholder="e.g. Open, Waiting for parts">
       <label>Customer</label>
       <input type="text" id="customerInput" value="${escapeHtml(r.customer === 'Unknown' ? '' : r.customer)}" placeholder="Customer name">
+      <label>Task(s)</label>
+      <textarea id="tasksInput" placeholder="Next steps">${escapeHtml(r.tasks)}</textarea>
       <label>Assigned tech(s)</label>
       <div class="techrow">
         <label><input type="checkbox" id="techEmigdio" ${r.techs.includes('Emigdio')?'checked':''}> Emigdio</label>
@@ -1595,6 +1597,7 @@ async function submitStatus(){
   const bucketEl = document.getElementById('bucketSelect');
   const caseStatusEl = document.getElementById('caseStatusInput');
   const customerEl = document.getElementById('customerInput');
+  const tasksEl = document.getElementById('tasksInput');
   const subAssemblyEl = document.getElementById('subAssemblySelect');
   const symptomEl = document.getElementById('symptomInput');
   const componentEl = document.getElementById('componentInput');
@@ -1606,6 +1609,7 @@ async function submitStatus(){
   const bucket = bucketEl.value;
   const caseStatus = caseStatusEl.value.trim();
   const customer = customerEl.value.trim();
+  const tasks = tasksEl.value.trim();
   const subAssembly = subAssemblyEl.value;
   const symptom = symptomEl.value.trim();
   const component = componentEl.value.trim();
@@ -1629,7 +1633,7 @@ async function submitStatus(){
   msgEl.className = 'notemsg';
   try{
     const res = await postToApi({ action: 'status', rowIndex: r.sheetRow, caseNum: r.caseNum, status, bucket, caseStatus,
-      customer, subAssembly, symptom, component, solution, rootCause, emigdio, david, jovanni });
+      customer, tasks, subAssembly, symptom, component, solution, rootCause, emigdio, david, jovanni });
     const data = await res.json();
     if(!data.ok) throw new Error(data.error || 'Unknown error');
     r.status = status.toLowerCase();
@@ -1638,6 +1642,7 @@ async function submitStatus(){
     r.caseStatus = caseStatus;
     r.customer = customer || 'Unknown';
     document.getElementById('sheetSub').textContent = `Case #${r.caseNum} · ${r.customer} · ${r.date}`;
+    r.tasks = tasks;
     r.subAssembly = subAssembly;
     r.symptom = symptom;
     r.component = component;
