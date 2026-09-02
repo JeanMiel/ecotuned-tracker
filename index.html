@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="1788282014867">
+<meta name="app-build" content="20260902132619">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -233,6 +233,12 @@
     font-size:14px; font-weight:600; font-family:inherit;}
   #confirmRecallBtn:disabled{opacity:0.5;}
 
+  .warrantybanner{margin-top:4px; margin-bottom:4px; background:#fff4e5; border:1px solid var(--amber); border-radius:12px; padding:12px;}
+  .warrantybanner-title{font-size:13px; font-weight:700; color:#b25000; margin-bottom:4px;}
+  .warrantybanner-text{font-size:13px; color:var(--text); line-height:1.4; margin-top:2px;}
+  .warrantybanner.expired{background:#ffe9e7; border-color:var(--red);}
+  .warrantybanner.expired .warrantybanner-title{color:#b42318;}
+
   .photopicker{margin-top:8px;}
   .photobtn{background:var(--chip); color:var(--blue); border:none; padding:7px 12px; border-radius:8px;
     font-size:13px; font-weight:600; font-family:inherit;}
@@ -304,7 +310,7 @@ const RECALL_CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/
 const NOTES_API_URL = "https://script.google.com/macros/s/AKfycbxIXaHyejXPn4LOzUaeHcPRmc4c0RFM5NtWqNRfjNwgBh3H0AoIqutwz0lgvq1JoAId/exec";
 const CACHE_KEY = "ecotuned_tracker_cache_v1";
 const AUTHOR_KEY = "ecotuned_tracker_author";
-const APP_BUILD = "20260831184541";
+const APP_BUILD = "20260902132619";
 
 // iOS home-screen (standalone) PWAs aggressively cache the app shell (HTML/JS/CSS) and
 // don't automatically pick up a new deploy just because the data refreshes. This checks
@@ -838,6 +844,98 @@ function formatMileage(raw){
   return Math.round(val).toLocaleString('en-US') + ' mi';
 }
 
+// Same parsing as formatMileage but returns a plain number (miles) for warranty math.
+function parseMileageNum(raw){
+  const s = norm(raw);
+  if(!s) return null;
+  const numMatch = s.replace(/,/g,'').match(/[\d.]+/);
+  if(!numMatch) return null;
+  let val = parseFloat(numMatch[0]);
+  if(/km/i.test(s)) val = val * KM_TO_MI;
+  return Math.round(val);
+}
+
+// Warranty rules: HV battery = 8yr / 100,000 mi; Powertrain = 5yr / 100,000 mi;
+// whichever limit (date or mileage) is hit first ends coverage for that part.
+const WARRANTY_MILEAGE_LIMIT = 100000;
+const WARRANTY_WARN_DAYS = 30;
+
+function parseWarrantyDate(s){
+  s = norm(s);
+  if(!s) return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  let d;
+  if(m) d = new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
+  else d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function addYears(date, years){
+  const d = new Date(date.getTime());
+  d.setFullYear(d.getFullYear() + years);
+  return d;
+}
+
+function daysBetween(a, b){
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+function computeWarrantyPart(warrantyStart, mileageNum, years){
+  const expiryDate = addYears(warrantyStart, years);
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const mileageExpired = (mileageNum != null && mileageNum >= WARRANTY_MILEAGE_LIMIT);
+  const dateExpired = today.getTime() >= expiryDate.getTime();
+  const expired = mileageExpired || dateExpired;
+  const daysLeft = daysBetween(today, expiryDate);
+  const expiringSoon = !expired && daysLeft >= 0 && daysLeft <= WARRANTY_WARN_DAYS;
+  return { expired, expiringSoon, expiryDate, daysLeft, mileageExpired, dateExpired };
+}
+
+function computeWarrantyStatus(r){
+  const warrantyStart = parseWarrantyDate(r.warrantyStart);
+  if(!warrantyStart) return null;
+  return {
+    hv: computeWarrantyPart(warrantyStart, r.mileageNum, 8),
+    powertrain: computeWarrantyPart(warrantyStart, r.mileageNum, 5)
+  };
+}
+
+function fmtDate(d){
+  return d.toLocaleDateString('en-US', {year:'numeric', month:'short', day:'numeric'});
+}
+
+function warrantyFieldHtml(status){
+  if(!status) return '';
+  const line = (label, s) => {
+    let state;
+    if(s.expired) state = 'Out of warranty (' + (s.mileageExpired ? 'mileage limit reached' : 'expired ' + fmtDate(s.expiryDate)) + ')';
+    else if(s.expiringSoon) state = 'Expires in ' + s.daysLeft + ' day(s) &middot; ' + fmtDate(s.expiryDate);
+    else state = 'Active until ' + fmtDate(s.expiryDate);
+    return label + ': ' + state;
+  };
+  return '<div class="field"><div class="fl">Warranty</div><div class="fv">' + line('HV Battery (8yr/100k mi)', status.hv) + '<br>' + line('Powertrain (5yr/100k mi)', status.powertrain) + '</div></div>';
+}
+
+function warrantyBannerHtml(status, busLabel){
+  if(!status) return '';
+  const parts = [];
+  [['hv','HV Battery'],['powertrain','Powertrain']].forEach(([key,label]) => {
+    const s = status[key];
+    if(s.expired){
+      const reason = s.mileageExpired ? 'mileage limit (100,000 mi) reached' : ('expired ' + fmtDate(s.expiryDate));
+      parts.push({ level:'expired', text: label + ' warranty is out (' + reason + '). This call might be billable.' });
+    } else if(s.expiringSoon){
+      parts.push({ level:'soon', text: label + ' warranty expires in ' + s.daysLeft + ' day(s) (' + fmtDate(s.expiryDate) + ').' });
+    }
+  });
+  if(!parts.length) return '';
+  const hasExpired = parts.some(p => p.level === 'expired');
+  const cls = hasExpired ? 'expired' : '';
+  const title = hasExpired ? '&#9888; Warranty Expired' : '&#9200; Warranty Expiring Soon';
+  return '<div class="warrantybanner ' + cls + '"><div class="warrantybanner-title">' + title + '</div>' + parts.map(p => '<div class="warrantybanner-text">' + escapeHtml(p.text) + '</div>').join('') + '</div>';
+}
+
 // Minimal RFC4180-ish CSV parser (handles quoted fields, embedded commas/newlines, doubled quotes)
 function parseCSV(text){
   const rows = [];
@@ -897,6 +995,8 @@ function makeRecord(r){
     tasks: norm(r['Tasks']),
     notes: norm(r['Last update']),
     mileage: formatMileage(r['Mileage']),
+    mileageNum: parseMileageNum(r['Mileage']),
+    warrantyStart: norm(r['Warranty Start Date']),
     lastLocation: norm(r['Last Location']),
     generation: norm(r['Generation']),
     swInternal: norm(r['SW Internal']),
@@ -1373,7 +1473,9 @@ function openSheet(r, backTo){
   const recall = RECALL_MAP[r.bus];
   const needsRecallConfirm = !!(recall && recall.done === false);
   const closedHistory = (r.bucket === 'active' && r.bus) ? RECORDS.filter(x => x.bus === r.bus && x.bucket === 'closed' && x !== r) : [];
+  const warrantyStatus = computeWarrantyStatus(r);
   document.getElementById('sheetbody').innerHTML = `
+    ${warrantyBannerHtml(warrantyStatus, r.bus)}
     ${needsRecallConfirm ? `
     <div class="recallbanner" id="recallBanner">
       <div class="recallbanner-title">&#9888; Power Steering Recall</div>
@@ -1398,6 +1500,7 @@ function openSheet(r, backTo){
       ${r.generation ? `<span class="gentag ${r.generation.toLowerCase()}">${escapeHtml(r.generation)}</span>` : ''}
       ${r.techs.map(t => `<span class="badge">${t}</span>`).join('')}
     </div>
+    ${warrantyFieldHtml(warrantyStatus)}
     <div class="field"><div class="fl">Initial Complaint</div><div class="fv">${escapeHtml(r.complaint) || '—'}</div></div>
     ${r.lastLocation ? `<div class="field"><div class="fl">Last Known Location</div><div class="fv"><a href="${escapeHtml(r.lastLocation)}" target="_blank" rel="noopener">View on map</a></div></div>` : ''}
     ${r.lastTelemetry ? `<div class="field"><div class="fl">Last Telemetry Contact</div><div class="fv">${escapeHtml(r.lastTelemetry)}</div></div>` : ''}
