@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260902151918">
+<meta name="app-build" content="20260902152608">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -310,7 +310,7 @@ const RECALL_CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/
 const NOTES_API_URL = "https://script.google.com/macros/s/AKfycbxIXaHyejXPn4LOzUaeHcPRmc4c0RFM5NtWqNRfjNwgBh3H0AoIqutwz0lgvq1JoAId/exec";
 const CACHE_KEY = "ecotuned_tracker_cache_v1";
 const AUTHOR_KEY = "ecotuned_tracker_author";
-const APP_BUILD = "20260902151918";
+const APP_BUILD = "20260902152608";
 
 // iOS home-screen (standalone) PWAs aggressively cache the app shell (HTML/JS/CSS) and
 // don't automatically pick up a new deploy just because the data refreshes. This checks
@@ -894,8 +894,8 @@ function computeWarrantyPart(warrantyStart, mileageNum, years, overrideExpiry){
 
 function computeWarrantyStatus(r){
   const warrantyStart = parseWarrantyDate(r.warrantyStart);
-  if(!warrantyStart) return null;
   const ext = parseWarrantyDate(r.warrantyExt);
+  if(!warrantyStart && !ext) return null;
   return {
     hv: computeWarrantyPart(warrantyStart, r.mileageNum, 8, ext),
     powertrain: computeWarrantyPart(warrantyStart, r.mileageNum, 5, ext),
