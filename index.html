@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260902153903">
+<meta name="app-build" content="20260902194602">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -1459,6 +1459,42 @@ async function aiRequest(r, question){
   }
 }
 
+async function suggestCloseCategories(r){
+  const btn = document.getElementById('aiSuggestBtn');
+  const msgEl = document.getElementById('aiSuggestMsg');
+  const resolutionEl = document.getElementById('resolutionSummaryInput');
+  const resolution = resolutionEl.value.trim();
+  if(!resolution){
+    msgEl.textContent = 'Write a quick summary of what was found/fixed first.';
+    msgEl.className = 'notemsg err';
+    return;
+  }
+  btn.disabled = true;
+  msgEl.textContent = 'Thinking\u2026';
+  msgEl.className = 'notemsg';
+  try{
+    const context = buildAiContext(r);
+    const res = await postToApi({ action: 'aiSuggestClose', rowIndex: r.sheetRow, caseNum: r.caseNum, context, resolution,
+      subAssemblyOptions: SUB_ASSEMBLY_OPTIONS, symptomOptions: SYMPTOM_OPTIONS, componentOptions: COMPONENT_OPTIONS,
+      solutionOptions: SOLUTION_OPTIONS, rootCauseOptions: ROOT_CAUSE_OPTIONS });
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'Unknown error');
+    const s = data.suggestion || {};
+    if(s.subAssembly) document.getElementById('subAssemblySelect').value = s.subAssembly;
+    if(s.symptom) document.getElementById('symptomInput').value = s.symptom;
+    if(s.component) document.getElementById('componentInput').value = s.component;
+    if(s.solution) document.getElementById('solutionSelect').value = s.solution;
+    if(s.rootCause) document.getElementById('rootCauseInput').value = s.rootCause;
+    msgEl.textContent = 'Suggested \u2014 review and adjust before saving.';
+    msgEl.className = 'notemsg ok';
+  } catch(e){
+    msgEl.textContent = 'Suggestion failed: ' + e.message;
+    msgEl.className = 'notemsg err';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function openSheet(r, backTo){
   CURRENT_RECORD = r;
   SELECTED_PHOTOS = [];
@@ -1574,6 +1610,12 @@ function openSheet(r, backTo){
       </div>
       <div class="closefields" id="closeFields" style="${r.bucket==='closed' ? '' : 'display:none;'}">
         <div class="fl" style="margin-top:10px;">Closing details</div>
+        <label>What was found / fixed?</label>
+        <textarea id="resolutionSummaryInput" placeholder="Short plain-language summary of the repair, e.g. 'Replaced leaking coolant hose on HV battery pack'"></textarea>
+        <div class="noterow">
+          <span class="notemsg" id="aiSuggestMsg"></span>
+          <button type="button" id="aiSuggestBtn">&#10024; Suggest categories</button>
+        </div>
         <label>Sub Assembly</label>
         <select id="subAssemblySelect">
           <option value="">Select...</option>${SUB_ASSEMBLY_OPTIONS.map(o => `<option value="${escapeHtml(o)}" ${r.subAssembly===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
@@ -1637,6 +1679,7 @@ function openSheet(r, backTo){
   document.getElementById('bucketSelect').addEventListener('change', (e) => {
     document.getElementById('closeFields').style.display = e.target.value === 'Closed' ? '' : 'none';
   });
+  document.getElementById('aiSuggestBtn').addEventListener('click', () => suggestCloseCategories(r));
   document.getElementById('addPhotoBtn').addEventListener('click', () => document.getElementById('notePhotoInput').click());
   document.getElementById('notePhotoInput').addEventListener('change', handlePhotoInput);
   if(needsRecallConfirm){
