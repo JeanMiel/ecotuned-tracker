@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260902144538">
+<meta name="app-build" content="20260902151918">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -310,7 +310,7 @@ const RECALL_CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/
 const NOTES_API_URL = "https://script.google.com/macros/s/AKfycbxIXaHyejXPn4LOzUaeHcPRmc4c0RFM5NtWqNRfjNwgBh3H0AoIqutwz0lgvq1JoAId/exec";
 const CACHE_KEY = "ecotuned_tracker_cache_v1";
 const AUTHOR_KEY = "ecotuned_tracker_author";
-const APP_BUILD = "20260902144538";
+const APP_BUILD = "20260902151918";
 
 // iOS home-screen (standalone) PWAs aggressively cache the app shell (HTML/JS/CSS) and
 // don't automatically pick up a new deploy just because the data refreshes. This checks
@@ -880,8 +880,8 @@ function daysBetween(a, b){
   return Math.round((b.getTime() - a.getTime()) / 86400000);
 }
 
-function computeWarrantyPart(warrantyStart, mileageNum, years){
-  const expiryDate = addYears(warrantyStart, years);
+function computeWarrantyPart(warrantyStart, mileageNum, years, overrideExpiry){
+  const expiryDate = overrideExpiry || addYears(warrantyStart, years);
   const today = new Date();
   today.setHours(0,0,0,0);
   const mileageExpired = (mileageNum != null && mileageNum >= WARRANTY_MILEAGE_LIMIT);
@@ -895,9 +895,11 @@ function computeWarrantyPart(warrantyStart, mileageNum, years){
 function computeWarrantyStatus(r){
   const warrantyStart = parseWarrantyDate(r.warrantyStart);
   if(!warrantyStart) return null;
+  const ext = parseWarrantyDate(r.warrantyExt);
   return {
-    hv: computeWarrantyPart(warrantyStart, r.mileageNum, 8),
-    powertrain: computeWarrantyPart(warrantyStart, r.mileageNum, 5)
+    hv: computeWarrantyPart(warrantyStart, r.mileageNum, 8, ext),
+    powertrain: computeWarrantyPart(warrantyStart, r.mileageNum, 5, ext),
+    extended: !!ext
   };
 }
 
@@ -914,7 +916,9 @@ function warrantyFieldHtml(status){
     else state = 'Active until ' + fmtDate(s.expiryDate);
     return label + ': ' + state;
   };
-  return '<div class="field"><div class="fl">Warranty</div><div class="fv">' + line('HV Battery (8yr/100k mi)', status.hv) + '<br>' + line('Powertrain (5yr/100k mi)', status.powertrain) + '</div></div>';
+  var hvLabel = status.extended ? 'HV Battery (extended)' : 'HV Battery (8yr/100k mi)';
+  var ptLabel = status.extended ? 'Powertrain (extended)' : 'Powertrain (5yr/100k mi)';
+  return '<div class="field"><div class="fl">Warranty</div><div class="fv">' + line(hvLabel, status.hv) + '<br>' + line(ptLabel, status.powertrain) + '</div></div>';
 }
 
 function warrantyBannerHtml(status, busLabel){
@@ -997,6 +1001,7 @@ function makeRecord(r){
     mileage: formatMileage(r['Mileage']),
     mileageNum: parseMileageNum(r['Mileage']),
     warrantyStart: norm(r['Warranty Start Date']),
+    warrantyExt: norm(r['Warranty Extension End Date']),
     lastLocation: norm(r['Last Location']),
     generation: norm(r['Generation']),
     swInternal: norm(r['SW Internal']),
