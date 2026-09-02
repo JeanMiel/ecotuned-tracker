@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260902142148">
+<meta name="app-build" content="20260902144538">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -310,7 +310,7 @@ const RECALL_CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/
 const NOTES_API_URL = "https://script.google.com/macros/s/AKfycbxIXaHyejXPn4LOzUaeHcPRmc4c0RFM5NtWqNRfjNwgBh3H0AoIqutwz0lgvq1JoAId/exec";
 const CACHE_KEY = "ecotuned_tracker_cache_v1";
 const AUTHOR_KEY = "ecotuned_tracker_author";
-const APP_BUILD = "20260902142148";
+const APP_BUILD = "20260902144538";
 
 // iOS home-screen (standalone) PWAs aggressively cache the app shell (HTML/JS/CSS) and
 // don't automatically pick up a new deploy just because the data refreshes. This checks
@@ -1527,6 +1527,8 @@ function openSheet(r, backTo){
     </div>
     <div class="statusbox">
       <div class="fl">Update status</div>
+      <label>Case #</label>
+      <input type="text" id="caseNumInput" value="${escapeHtml(r.caseNum)}" placeholder="Case number">
       <label>Bus / Body #</label>
       <input type="text" id="busInput" value="${escapeHtml(r.bus === String.fromCharCode(8212) ? '' : r.bus)}" placeholder="e.g. 21-24245">
       <div class="row">
@@ -1706,6 +1708,7 @@ async function submitRecallConfirm(r){
 async function submitStatus(){
   const r = CURRENT_RECORD;
   if(!r) return;
+  const caseNumEl = document.getElementById('caseNumInput');
   const busEl = document.getElementById('busInput');
   const statusEl = document.getElementById('statusSelect');
   const bucketEl = document.getElementById('bucketSelect');
@@ -1720,6 +1723,7 @@ async function submitStatus(){
   const rootCauseEl = document.getElementById('rootCauseInput');
   const msgEl = document.getElementById('statusMsg');
   const btn = document.getElementById('saveStatusBtn');
+  const newCaseNum = caseNumEl.value.trim();
   const bus = busEl.value.trim();
   const status = statusEl.value;
   const bucket = bucketEl.value;
@@ -1735,6 +1739,11 @@ async function submitStatus(){
   const emigdio = document.getElementById('techEmigdio').checked;
   const david = document.getElementById('techDavid').checked;
   const jovanni = document.getElementById('techJovanni').checked;
+  if(!newCaseNum){
+    msgEl.textContent = 'Case # is required.';
+    msgEl.className = 'notemsg err';
+    return;
+  }
   if(!bus){
     msgEl.textContent = 'Bus / Body # is required.';
     msgEl.className = 'notemsg err';
@@ -1754,10 +1763,11 @@ async function submitStatus(){
   msgEl.textContent = 'Saving…';
   msgEl.className = 'notemsg';
   try{
-    const res = await postToApi({ action: 'status', rowIndex: r.sheetRow, caseNum: r.caseNum, bus, status, bucket, generation, caseStatus,
+    const res = await postToApi({ action: 'status', rowIndex: r.sheetRow, caseNum: r.caseNum, newCaseNum, bus, status, bucket, generation, caseStatus,
       customer, tasks, subAssembly, symptom, component, solution, rootCause, emigdio, david, jovanni });
     const data = await res.json();
     if(!data.ok) throw new Error(data.error || 'Unknown error');
+    r.caseNum = newCaseNum;
     r.bus = bus;
     r.status = status.toLowerCase();
     r.statusLabel = status;
