@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260902135143">
+<meta name="app-build" content="20260902142148">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -310,7 +310,7 @@ const RECALL_CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/
 const NOTES_API_URL = "https://script.google.com/macros/s/AKfycbxIXaHyejXPn4LOzUaeHcPRmc4c0RFM5NtWqNRfjNwgBh3H0AoIqutwz0lgvq1JoAId/exec";
 const CACHE_KEY = "ecotuned_tracker_cache_v1";
 const AUTHOR_KEY = "ecotuned_tracker_author";
-const APP_BUILD = "20260902135143";
+const APP_BUILD = "20260902142148";
 
 // iOS home-screen (standalone) PWAs aggressively cache the app shell (HTML/JS/CSS) and
 // don't automatically pick up a new deploy just because the data refreshes. This checks
@@ -1544,6 +1544,14 @@ function openSheet(r, backTo){
             <option value="Closed" ${r.bucket==='closed'?'selected':''}>Closed</option>
           </select>
         </div>
+        <div>
+          <label>Generation</label>
+          <select id="generationSelect">
+            <option value="" ${r.generation===''?'selected':''}>Unknown</option>
+            <option value="MK3" ${r.generation==='MK3'?'selected':''}>MK3</option>
+            <option value="MK4" ${r.generation==='MK4'?'selected':''}>MK4</option>
+          </select>
+        </div>
       </div>
       <label>Case status</label>
       <input type="text" id="caseStatusInput" value="${escapeHtml(r.caseStatus)}" placeholder="e.g. Open, Waiting for parts">
@@ -1701,6 +1709,7 @@ async function submitStatus(){
   const busEl = document.getElementById('busInput');
   const statusEl = document.getElementById('statusSelect');
   const bucketEl = document.getElementById('bucketSelect');
+  const generationEl = document.getElementById('generationSelect');
   const caseStatusEl = document.getElementById('caseStatusInput');
   const customerEl = document.getElementById('customerInput');
   const tasksEl = document.getElementById('tasksInput');
@@ -1714,6 +1723,7 @@ async function submitStatus(){
   const bus = busEl.value.trim();
   const status = statusEl.value;
   const bucket = bucketEl.value;
+  const generation = generationEl.value;
   const caseStatus = caseStatusEl.value.trim();
   const customer = customerEl.value.trim();
   const tasks = tasksEl.value.trim();
@@ -1744,7 +1754,7 @@ async function submitStatus(){
   msgEl.textContent = 'Saving…';
   msgEl.className = 'notemsg';
   try{
-    const res = await postToApi({ action: 'status', rowIndex: r.sheetRow, caseNum: r.caseNum, bus, status, bucket, caseStatus,
+    const res = await postToApi({ action: 'status', rowIndex: r.sheetRow, caseNum: r.caseNum, bus, status, bucket, generation, caseStatus,
       customer, tasks, subAssembly, symptom, component, solution, rootCause, emigdio, david, jovanni });
     const data = await res.json();
     if(!data.ok) throw new Error(data.error || 'Unknown error');
@@ -1752,6 +1762,7 @@ async function submitStatus(){
     r.status = status.toLowerCase();
     r.statusLabel = status;
     r.bucket = bucket.toLowerCase();
+    r.generation = generation;
     r.caseStatus = caseStatus;
     r.customer = customer || 'Unknown';
     document.getElementById('sheetTitle').textContent = r.bus;
@@ -1807,6 +1818,14 @@ function openNewCaseForm(){
         </select>
       </div>
       <div class="fieldrow">
+        <label>Generation</label>
+        <select id="ncGeneration">
+          <option value="">Unknown</option>
+          <option value="MK3">MK3</option>
+          <option value="MK4">MK4</option>
+        </select>
+      </div>
+      <div class="fieldrow">
         <label>Assigned tech(s)</label>
         <div class="techrow">
           <label><input type="checkbox" id="ncEmigdio"> Emigdio</label>
@@ -1843,6 +1862,7 @@ async function submitNewCase(){
   const caseNum = document.getElementById('ncCase').value.trim();
   const etLocation = document.getElementById('ncLoc').value.trim();
   const status = document.getElementById('ncStatus').value;
+  const generation = document.getElementById('ncGeneration').value;
   const emigdio = document.getElementById('ncEmigdio').checked;
   const david = document.getElementById('ncDavid').checked;
   const jovanni = document.getElementById('ncJovanni').checked;
@@ -1863,7 +1883,7 @@ async function submitNewCase(){
   msgEl.className = 'formmsg';
   try{
     const res = await postToApi({
-      action: 'newCase', bus, customer, caseNum, etLocation, status,
+      action: 'newCase', bus, customer, caseNum, etLocation, status, generation,
       emigdio, david, jovanni, complaint, tasks, mileage
     });
     const data = await res.json();
