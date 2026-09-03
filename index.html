@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260903151830">
+<meta name="app-build" content="20260903194843">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -316,7 +316,7 @@ const RECALL_CSV_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/
 const NOTES_API_URL = "https://script.google.com/macros/s/AKfycbxIXaHyejXPn4LOzUaeHcPRmc4c0RFM5NtWqNRfjNwgBh3H0AoIqutwz0lgvq1JoAId/exec";
 const CACHE_KEY = "ecotuned_tracker_cache_v1";
 const AUTHOR_KEY = "ecotuned_tracker_author";
-const APP_BUILD = "20260902153903";
+const APP_BUILD = "20260903194843";
 
 // iOS home-screen (standalone) PWAs aggressively cache the app shell (HTML/JS/CSS) and
 // don't automatically pick up a new deploy just because the data refreshes. This checks
@@ -1513,6 +1513,9 @@ function openSheet(r, backTo){
   CURRENT_RECORD = r;
   SELECTED_PHOTOS = [];
   AI_CONVERSATION = [];
+  if(r && r.sheetRow !== undefined && r.sheetRow !== null){
+    try{ history.replaceState(null, '', '#case=' + r.sheetRow); } catch(e){}
+  }
   const backBtn = document.getElementById('backBtn');
   if(backTo){
     backBtn.style.display = '';
@@ -2065,6 +2068,20 @@ async function submitNote(){
 function closeSheet(){
   document.getElementById('overlay').classList.remove('show');
   document.getElementById('sheet').classList.remove('show');
+  if(location.hash){
+    try{ history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+  }
+}
+
+// If the app got reloaded (e.g. a stale-build check reloaded the page, or the
+// browser/OS discarded the backgrounded tab) while a case was open, the URL hash
+// still remembers which one — reopen it so the user doesn't land back on the home list.
+function restoreFromHash(){
+  const m = location.hash.match(/#case=(.+)/);
+  if(!m) return;
+  const key = decodeURIComponent(m[1]);
+  const rec = RECORDS.find(x => String(x.sheetRow) === key);
+  if(rec) openSheet(rec);
 }
 
 document.getElementById('overlay').addEventListener('click', closeSheet);
@@ -2149,7 +2166,7 @@ if(window.navigator.standalone){
   document.getElementById('tip').style.display = 'none';
 }
 
-loadData(false);
+loadData(false).then(restoreFromHash);
 // Refresh automatically whenever the app regains focus / becomes visible (e.g. reopened from home screen)
 document.addEventListener('visibilitychange', () => { if(!document.hidden){ checkForUpdate(); loadData(false); } });
 </script>
