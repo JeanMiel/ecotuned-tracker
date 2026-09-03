@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260902194602">
+<meta name="app-build" content="20260903151830">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -168,6 +168,12 @@
   .statusbox .noterow{display:flex; justify-content:flex-end; gap:8px; margin-top:8px; align-items:center;}
   .closefields{margin-top:6px;}
   .closefields label{margin-top:8px;}
+  .failure-block{margin-top:14px; padding:10px; background:var(--bg); border-radius:10px; border:1px solid var(--sep);}
+  .failure-block-head{display:flex; justify-content:space-between; align-items:center;}
+  .failure-block-label{font-size:12px; font-weight:700; color:var(--sub); text-transform:uppercase; letter-spacing:.3px;}
+  .removeFailureBtn{background:none; border:none; color:var(--red); font-size:12px; padding:2px 4px; cursor:pointer;}
+  .addfailurebtn{margin-top:10px; background:var(--chip); color:var(--blue); border:none; padding:7px 12px;
+    border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;}
   .combo-wrap{position:relative;}
   .combo-list{position:absolute; z-index:60; left:0; right:0; top:calc(100% + 2px); background:var(--card);
     border:1px solid var(--sep); max-height:200px; overflow-y:auto; -webkit-overflow-scrolling:touch;
@@ -347,25 +353,6 @@ async function postToApi(body){
 
 const TECHS = ['Emigdio','David','Jovanni'];
 const TECH_INIT = {Emigdio:'EF', David:'DF', Jovanni:'JC'};
-
-const SUB_ASSEMBLY_OPTIONS = [
-  "A/C Bracket",
-  "Applemint Gridwiz",
-  "Battery",
-  "Cooling",
-  "Harness",
-  "HV cables",
-  "LVPDM Front",
-  "LVPDM Rear",
-  "PCB HVAC MK4",
-  "Powertrain",
-  "Software",
-  "Telemetry",
-  "Transmission",
-  "Unknown",
-  "Vacuum pump MK4",
-  "Water Pump MK4"
-];
 
 const SYMPTOM_OPTIONS = [
   "ABS Light",
@@ -987,6 +974,13 @@ function makeRecord(r){
   const techs = TECHS.filter(t => norm(r[t]) !== '');
   const bucket = normLower(r['Bucket']) === 'active' ? 'active' : 'closed';
 
+  const symptom = norm(r['Symptom']);
+  const component = norm(r['Component']);
+  const solution = norm(r['Solution']);
+  const rootCause = norm(r['Root Cause']);
+  const failuresRaw = norm(r['Failures']);
+  const failures = parseFailures(symptom, component, solution, rootCause, failuresRaw);
+
   return {
     date: r['Date'] || '',
     customer: norm(r['Customer']) || 'Unknown',
@@ -1012,14 +1006,31 @@ function makeRecord(r){
     telemetryStatus: norm(r['Telemetry Status']),
     lastTelemetry: norm(r['Last Telemetry Contact']),
     caseStatus: norm(r['Case status']),
-    subAssembly: norm(r['Sub Assembly']),
-    symptom: norm(r['Symptom']),
-    component: norm(r['Component']),
-    solution: norm(r['Solution']),
-    rootCause: norm(r['Root Cause']),
+    symptom, component, solution, rootCause, failures,
     bucket,
     sheetRow: r.__sheetRow
   };
+}
+
+function parseFailures(symptom, component, solution, rootCause, failuresRaw){
+  if(failuresRaw){
+    try{
+      const arr = JSON.parse(failuresRaw);
+      if(Array.isArray(arr)){
+        const cleaned = arr.map(f => ({
+          symptom: (f && f.symptom) || '',
+          component: (f && f.component) || '',
+          solution: (f && f.solution) || '',
+          rootCause: (f && f.rootCause) || ''
+        })).filter(f => f.symptom || f.component || f.solution || f.rootCause);
+        if(cleaned.length) return cleaned;
+      }
+    } catch(e){}
+  }
+  if(symptom || component || solution || rootCause){
+    return [{symptom, component, solution, rootCause}];
+  }
+  return [];
 }
 
 let RECORDS = [];
@@ -1388,9 +1399,9 @@ function buildAiContext(r){
   ].filter(Boolean).join(', ');
   if(sw) lines.push(`Software versions: ${sw}`);
   if(r.telemetryStatus) lines.push(`Telemetry: ${r.telemetryStatus}${r.lastTelemetry ? ' (last contact '+r.lastTelemetry+')' : ''}`);
-  if(r.bucket === 'closed'){
-    const res = [r.subAssembly, r.symptom, r.component, r.solution, r.rootCause].filter(Boolean).join(' / ');
-    if(res) lines.push(`Resolution on file: ${res}`);
+  if(r.bucket === 'closed' && r.failures && r.failures.length){
+    const parts = r.failures.map(f => [f.symptom, f.component, f.solution, f.rootCause].filter(Boolean).join(' / ')).filter(Boolean);
+    if(parts.length) lines.push(`Resolution on file: ${parts.join('; ')}`);
   }
   if(r.notes){
     const cleanNotes = r.notes.toString().split('\n').filter(l => l.indexOf('IMG::') !== 0).join('\n');
@@ -1402,7 +1413,8 @@ function buildAiContext(r){
   if(history.length){
     lines.push('Prior cases on record for this bus:');
     history.forEach(h => {
-      const res = [h.subAssembly, h.symptom, h.component, h.solution, h.rootCause].filter(Boolean).join(' / ');
+      const parts = (h.failures || []).map(f => [f.symptom, f.component, f.solution, f.rootCause].filter(Boolean).join(' / ')).filter(Boolean);
+      const res = parts.join('; ');
       lines.push(`- [${h.date}] Case #${h.caseNum} (${h.bucket}): ${aiTruncate(h.complaint, 200)}${res ? ' \u2192 ' + res : ''}`);
     });
   } else {
@@ -1475,17 +1487,19 @@ async function suggestCloseCategories(r){
   try{
     const context = buildAiContext(r);
     const res = await postToApi({ action: 'aiSuggestClose', rowIndex: r.sheetRow, caseNum: r.caseNum, context, resolution,
-      subAssemblyOptions: SUB_ASSEMBLY_OPTIONS, symptomOptions: SYMPTOM_OPTIONS, componentOptions: COMPONENT_OPTIONS,
+      symptomOptions: SYMPTOM_OPTIONS, componentOptions: COMPONENT_OPTIONS,
       solutionOptions: SOLUTION_OPTIONS, rootCauseOptions: ROOT_CAUSE_OPTIONS });
     const data = await res.json();
     if(!data.ok) throw new Error(data.error || 'Unknown error');
-    const s = data.suggestion || {};
-    if(s.subAssembly) document.getElementById('subAssemblySelect').value = s.subAssembly;
-    if(s.symptom) document.getElementById('symptomInput').value = s.symptom;
-    if(s.component) document.getElementById('componentInput').value = s.component;
-    if(s.solution) document.getElementById('solutionSelect').value = s.solution;
-    if(s.rootCause) document.getElementById('rootCauseInput').value = s.rootCause;
-    msgEl.textContent = 'Suggested \u2014 review and adjust before saving.';
+    const suggestions = (data.suggestions || []).filter(s => s.symptom || s.component || s.solution || s.rootCause);
+    if(!suggestions.length){
+      msgEl.textContent = 'No confident match found \u2014 fill in manually below.';
+      msgEl.className = 'notemsg err';
+      return;
+    }
+    document.getElementById('failureBlocks').innerHTML = '';
+    suggestions.forEach(s => addFailureBlock(s));
+    msgEl.textContent = `Suggested ${suggestions.length} failure${suggestions.length > 1 ? 's' : ''} \u2014 review and adjust before saving.`;
     msgEl.className = 'notemsg ok';
   } catch(e){
     msgEl.textContent = 'Suggestion failed: ' + e.message;
@@ -1616,29 +1630,8 @@ function openSheet(r, backTo){
           <span class="notemsg" id="aiSuggestMsg"></span>
           <button type="button" id="aiSuggestBtn">&#10024; Suggest categories</button>
         </div>
-        <label>Sub Assembly</label>
-        <select id="subAssemblySelect">
-          <option value="">Select...</option>${SUB_ASSEMBLY_OPTIONS.map(o => `<option value="${escapeHtml(o)}" ${r.subAssembly===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
-        </select>
-        <label>Symptom</label>
-        <div class="combo-wrap">
-          <input type="text" id="symptomInput" autocomplete="off" placeholder="Search or select..." value="${escapeHtml(r.symptom)}">
-          <div class="combo-list" id="symptomList"></div>
-        </div>
-        <label>Component</label>
-        <div class="combo-wrap">
-          <input type="text" id="componentInput" autocomplete="off" placeholder="Search or select..." value="${escapeHtml(r.component)}">
-          <div class="combo-list" id="componentList"></div>
-        </div>
-        <label>Solution</label>
-        <select id="solutionSelect">
-          <option value="">Select...</option>${SOLUTION_OPTIONS.map(o => `<option value="${escapeHtml(o)}" ${r.solution===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
-        </select>
-        <label>Root Cause</label>
-        <div class="combo-wrap">
-          <input type="text" id="rootCauseInput" autocomplete="off" placeholder="Search or select..." value="${escapeHtml(r.rootCause)}">
-          <div class="combo-list" id="rootCauseList"></div>
-        </div>
+        <div id="failureBlocks"></div>
+        <button type="button" id="addFailureBtn" class="addfailurebtn">+ Add another failure</button>
       </div>
       <div class="noterow">
         <span class="notemsg" id="statusMsg"></span>
@@ -1692,11 +1685,87 @@ function openSheet(r, backTo){
       if(!isNaN(idx) && RECORDS[idx]) openSheet(RECORDS[idx], r);
     });
   });
-  initCombo('symptomInput', 'symptomList', SYMPTOM_OPTIONS);
-  initCombo('componentInput', 'componentList', COMPONENT_OPTIONS);
-  initCombo('rootCauseInput', 'rootCauseList', ROOT_CAUSE_OPTIONS);
+  document.getElementById('failureBlocks').innerHTML = '';
+  if(r.failures && r.failures.length){
+    r.failures.forEach(f => addFailureBlock(f));
+  } else {
+    addFailureBlock();
+  }
+  document.getElementById('failureBlocks').addEventListener('click', (e) => {
+    const btn = e.target.closest('.removeFailureBtn');
+    if(!btn) return;
+    const block = btn.closest('.failure-block');
+    if(block) block.remove();
+    renumberFailureBlocks();
+  });
+  document.getElementById('addFailureBtn').addEventListener('click', () => addFailureBlock());
   document.getElementById('overlay').classList.add('show');
   document.getElementById('sheet').classList.add('show');
+}
+
+let FAILURE_SEQ = 0;
+
+function failureBlockHtml(id, f){
+  f = f || {};
+  return `
+    <div class="failure-block" data-fid="${id}">
+      <div class="failure-block-head">
+        <span class="failure-block-label">Failure #<span class="fnum"></span></span>
+        <button type="button" class="removeFailureBtn" data-fid="${id}">&#10005; Remove</button>
+      </div>
+      <label>Symptom</label>
+      <div class="combo-wrap">
+        <input type="text" id="symptomInput_${id}" class="symptomInput" autocomplete="off" placeholder="Search or select..." value="${escapeHtml(f.symptom||'')}">
+        <div class="combo-list" id="symptomList_${id}"></div>
+      </div>
+      <label>Component</label>
+      <div class="combo-wrap">
+        <input type="text" id="componentInput_${id}" class="componentInput" autocomplete="off" placeholder="Search or select..." value="${escapeHtml(f.component||'')}">
+        <div class="combo-list" id="componentList_${id}"></div>
+      </div>
+      <label>Solution</label>
+      <select id="solutionSelect_${id}" class="solutionSelect">
+        <option value="">Select...</option>${SOLUTION_OPTIONS.map(o => `<option value="${escapeHtml(o)}" ${f.solution===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}
+      </select>
+      <label>Root Cause</label>
+      <div class="combo-wrap">
+        <input type="text" id="rootCauseInput_${id}" class="rootCauseInput" autocomplete="off" placeholder="Search or select..." value="${escapeHtml(f.rootCause||'')}">
+        <div class="combo-list" id="rootCauseList_${id}"></div>
+      </div>
+    </div>`;
+}
+
+function addFailureBlock(f){
+  const container = document.getElementById('failureBlocks');
+  if(!container) return;
+  const id = FAILURE_SEQ++;
+  container.insertAdjacentHTML('beforeend', failureBlockHtml(id, f));
+  initCombo('symptomInput_' + id, 'symptomList_' + id, SYMPTOM_OPTIONS);
+  initCombo('componentInput_' + id, 'componentList_' + id, COMPONENT_OPTIONS);
+  initCombo('rootCauseInput_' + id, 'rootCauseList_' + id, ROOT_CAUSE_OPTIONS);
+  renumberFailureBlocks();
+}
+
+function renumberFailureBlocks(){
+  document.querySelectorAll('#failureBlocks .failure-block').forEach((el, i) => {
+    const num = el.querySelector('.fnum');
+    if(num) num.textContent = (i + 1);
+  });
+}
+
+function collectFailures(){
+  const blocks = document.querySelectorAll('#failureBlocks .failure-block');
+  const out = [];
+  blocks.forEach(block => {
+    const symptom = block.querySelector('.symptomInput').value.trim();
+    const component = block.querySelector('.componentInput').value.trim();
+    const solution = block.querySelector('.solutionSelect').value;
+    const rootCause = block.querySelector('.rootCauseInput').value.trim();
+    if(symptom || component || solution || rootCause){
+      out.push({symptom, component, solution, rootCause});
+    }
+  });
+  return out;
 }
 
 function initCombo(inputId, listId, options){
@@ -1764,11 +1833,6 @@ async function submitStatus(){
   const caseStatusEl = document.getElementById('caseStatusInput');
   const customerEl = document.getElementById('customerInput');
   const tasksEl = document.getElementById('tasksInput');
-  const subAssemblyEl = document.getElementById('subAssemblySelect');
-  const symptomEl = document.getElementById('symptomInput');
-  const componentEl = document.getElementById('componentInput');
-  const solutionEl = document.getElementById('solutionSelect');
-  const rootCauseEl = document.getElementById('rootCauseInput');
   const msgEl = document.getElementById('statusMsg');
   const btn = document.getElementById('saveStatusBtn');
   const newCaseNum = caseNumEl.value.trim();
@@ -1779,11 +1843,11 @@ async function submitStatus(){
   const caseStatus = caseStatusEl.value.trim();
   const customer = customerEl.value.trim();
   const tasks = tasksEl.value.trim();
-  const subAssembly = subAssemblyEl.value;
-  const symptom = symptomEl.value.trim();
-  const component = componentEl.value.trim();
-  const solution = solutionEl.value;
-  const rootCause = rootCauseEl.value.trim();
+  const failures = collectFailures();
+  const symptom = failures.length ? failures[0].symptom : '';
+  const component = failures.length ? failures[0].component : '';
+  const solution = failures.length ? failures[0].solution : '';
+  const rootCause = failures.length ? failures[0].rootCause : '';
   const emigdio = document.getElementById('techEmigdio').checked;
   const david = document.getElementById('techDavid').checked;
   const jovanni = document.getElementById('techJovanni').checked;
@@ -1812,7 +1876,7 @@ async function submitStatus(){
   msgEl.className = 'notemsg';
   try{
     const res = await postToApi({ action: 'status', rowIndex: r.sheetRow, caseNum: r.caseNum, newCaseNum, bus, status, bucket, generation, caseStatus,
-      customer, tasks, subAssembly, symptom, component, solution, rootCause, emigdio, david, jovanni });
+      customer, tasks, symptom, component, solution, rootCause, failures: JSON.stringify(failures), emigdio, david, jovanni });
     const data = await res.json();
     if(!data.ok) throw new Error(data.error || 'Unknown error');
     r.caseNum = newCaseNum;
@@ -1826,11 +1890,11 @@ async function submitStatus(){
     document.getElementById('sheetTitle').textContent = r.bus;
     document.getElementById('sheetSub').textContent = `Case #${r.caseNum} · ${r.customer} · ${r.date}`;
     r.tasks = tasks;
-    r.subAssembly = subAssembly;
     r.symptom = symptom;
     r.component = component;
     r.solution = solution;
     r.rootCause = rootCause;
+    r.failures = failures;
     r.techs = TECHS.filter(t => ({Emigdio:emigdio, David:david, Jovanni:jovanni})[t]);
     msgEl.textContent = 'Saved.';
     msgEl.className = 'notemsg ok';
