@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260908105241">
+<meta name="app-build" content="20260908110950">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -168,6 +168,22 @@
   #addNoteBtn{background:var(--blue); color:#fff; border:none; padding:8px 16px; border-radius:8px;
     font-size:14px; font-weight:600; font-family:inherit;}
   #addNoteBtn:disabled{opacity:0.5;}
+
+  .logentry{display:flex; align-items:flex-start; gap:8px; padding:6px 0; border-bottom:1px solid var(--sep);}
+  .logentry:last-child{border-bottom:none;}
+  .logentry-body{flex:1; min-width:0; font-size:14.5px; line-height:1.45; white-space:normal;}
+  .logentry-actions{display:flex; gap:4px; flex-shrink:0;}
+  .logedit, .logdel{background:var(--chip); border:none; width:26px; height:26px; border-radius:50%;
+    font-size:12px; color:var(--sub); font-family:inherit; flex-shrink:0;}
+  .logdel{color:var(--red);}
+  .logentry.editing{display:block;}
+  .logeditarea{width:100%; border:1px solid var(--sep); background:var(--card); border-radius:8px;
+    padding:8px 10px; font-size:14px; font-family:inherit; resize:vertical; min-height:64px;}
+  .logentry-editactions{display:flex; justify-content:flex-end; gap:8px; margin-top:6px;}
+  .logeditcancel, .logeditsave{border:none; padding:6px 14px; border-radius:8px; font-size:13px;
+    font-weight:600; font-family:inherit;}
+  .logeditcancel{background:var(--chip); color:var(--sub);}
+  .logeditsave{background:var(--blue); color:#fff;}
 
   .headerbtns{display:flex; align-items:center; flex-shrink:0; gap:8px;}
   #newCaseBtn{background:var(--chip); border:none; width:32px;height:32px;border-radius:50%;
@@ -1224,10 +1240,31 @@ function escapeHtml(s){
   return (s||'').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function renderNotesLog(text){
-  if(!text) return '—';
+// A log entry starts on any line that contains a "(MM/dd/yyyy HH:mm):" stamp
+// (the format handleNote() writes). Everything after that up to the next
+// stamped line — including continuation lines from a multi-line note, and
+// IMG:: photo lines — belongs to the same entry.
+const LOG_ENTRY_RE = /\(\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}\):/;
+function parseLogEntries(text){
+  if(!text) return [];
   const lines = text.toString().split('\n');
-  return lines.map(line => {
+  const entries = [];
+  let current = null;
+  lines.forEach(line => {
+    if(current === null || LOG_ENTRY_RE.test(line)){
+      current = [line];
+      entries.push(current);
+    } else {
+      current.push(line);
+    }
+  });
+  return entries.map(ls => ls.join('\n'));
+}
+
+let LOG_EDIT_IDX = null;
+
+function renderLogEntryLines(entry){
+  return entry.split('\n').map(line => {
     if(line.indexOf('IMG::') === 0){
       const url = line.slice(5).trim();
       return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" class="notephoto" loading="lazy"></a>`;
@@ -1235,6 +1272,89 @@ function renderNotesLog(text){
     return escapeHtml(line);
   }).join('<br>');
 }
+
+function renderNotesLog(text){
+  const entries = parseLogEntries(text);
+  if(entries.length === 0){ LOG_EDIT_IDX = null; return '—'; }
+  return entries.map((entry, idx) => {
+    if(idx === LOG_EDIT_IDX){
+      return `<div class="logentry editing" data-entry-idx="${idx}">
+        <textarea class="logeditarea">${escapeHtml(entry)}</textarea>
+        <div class="logentry-editactions">
+          <button type="button" class="logeditcancel" data-entry-idx="${idx}">Cancel</button>
+          <button type="button" class="logeditsave" data-entry-idx="${idx}">Save</button>
+        </div>
+      </div>`;
+    }
+    return `<div class="logentry" data-entry-idx="${idx}">
+      <div class="logentry-body">${renderLogEntryLines(entry)}</div>
+      <div class="logentry-actions">
+        <button type="button" class="logedit" data-entry-idx="${idx}" title="Edit">&#9998;</button>
+        <button type="button" class="logdel" data-entry-idx="${idx}" title="Delete">&#128465;</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function commitLogChange(newNotes){
+  const r = CURRENT_RECORD;
+  if(!r) return;
+  const container = document.getElementById('notesLog');
+  try{
+    const res = await postToApi({ action: 'setNotesLog', rowIndex: r.sheetRow, caseNum: r.caseNum, notes: newNotes });
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || 'Unknown error');
+    r.notes = data.updated;
+  } catch(e){
+    alert('Failed to update log: ' + e.message);
+  }
+  LOG_EDIT_IDX = null;
+  if(container) container.innerHTML = renderNotesLog(r.notes);
+  loadData(false);
+}
+
+function startEditLogEntry(idx){
+  LOG_EDIT_IDX = idx;
+  const container = document.getElementById('notesLog');
+  if(container && CURRENT_RECORD) container.innerHTML = renderNotesLog(CURRENT_RECORD.notes);
+}
+
+function cancelEditLogEntry(){
+  LOG_EDIT_IDX = null;
+  const container = document.getElementById('notesLog');
+  if(container && CURRENT_RECORD) container.innerHTML = renderNotesLog(CURRENT_RECORD.notes);
+}
+
+function saveEditLogEntry(idx){
+  const r = CURRENT_RECORD;
+  if(!r) return;
+  const container = document.getElementById('notesLog');
+  const textarea = container ? container.querySelector('.logeditarea') : null;
+  if(!textarea) return;
+  const entries = parseLogEntries(r.notes);
+  entries[idx] = textarea.value;
+  commitLogChange(entries.join('\n'));
+}
+
+function deleteLogEntry(idx){
+  const r = CURRENT_RECORD;
+  if(!r) return;
+  if(!confirm('Delete this log entry? This cannot be undone.')) return;
+  const entries = parseLogEntries(r.notes);
+  entries.splice(idx, 1);
+  commitLogChange(entries.join('\n'));
+}
+
+document.addEventListener('click', (e) => {
+  const editBtn = e.target.closest('.logedit');
+  if(editBtn){ startEditLogEntry(parseInt(editBtn.dataset.entryIdx, 10)); return; }
+  const cancelBtn = e.target.closest('.logeditcancel');
+  if(cancelBtn){ cancelEditLogEntry(); return; }
+  const saveBtn = e.target.closest('.logeditsave');
+  if(saveBtn){ saveEditLogEntry(parseInt(saveBtn.dataset.entryIdx, 10)); return; }
+  const delBtn = e.target.closest('.logdel');
+  if(delBtn){ deleteLogEntry(parseInt(delBtn.dataset.entryIdx, 10)); return; }
+});
 
 function renderList(){
   const items = RECORDS.filter(matches);
