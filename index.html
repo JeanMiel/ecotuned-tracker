@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260908142238">
+<meta name="app-build" content="20260908105241">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -843,6 +843,16 @@ const LATEST_MK3_BUILD = '1238';
 function norm(s){ return (s||'').toString().trim(); }
 function normLower(s){ return norm(s).toLowerCase(); }
 
+// Bus numbers are normally entered as "YY-XXXXX" (e.g. "26-24106"). Some rows
+// get typed without the dash ("2624106"). Treat those the same as if the
+// dash were there, so display, search, recall lookups, and case-history
+// grouping all still match correctly.
+function normalizeBusNumber(s){
+  const v = norm(s);
+  if(/^\d{7}$/.test(v)) return v.slice(0,2) + '-' + v.slice(2);
+  return v;
+}
+
 // Mileage is entered as free text ('45,120 mi', '13,951 km', etc). Always
 // display it normalized to miles so units never get mixed in the UI.
 const KM_TO_MI = 0.621371;
@@ -1009,7 +1019,7 @@ function makeRecord(r){
   return {
     date: r['Date'] || '',
     customer: norm(r['Customer']) || 'Unknown',
-    bus: norm(r['Bus #']) || String.fromCharCode(8212),
+    bus: normalizeBusNumber(r['Bus #']) || String.fromCharCode(8212),
     caseNum: r['Case #'] || '',
     status, statusLabel: status === 'other' ? (norm(r['Status']) || String.fromCharCode(8212)) : (status.charAt(0).toUpperCase()+status.slice(1)),
     loc,
@@ -1079,7 +1089,7 @@ function buildRecallMap(text){
   const objs = csvToObjects(text);
   const map = {};
   objs.forEach(o => {
-    const bus = norm(o['Bus #']);
+    const bus = normalizeBusNumber(o['Bus #']);
     if(!bus) return;
     const dateVal = norm(o['Recall Date']);
     if(!map[bus]) map[bus] = { done: true };
@@ -1861,7 +1871,7 @@ async function submitStatus(){
   const msgEl = document.getElementById('statusMsg');
   const btn = document.getElementById('saveStatusBtn');
   const newCaseNum = caseNumEl.value.trim();
-  const bus = busEl.value.trim();
+  const bus = normalizeBusNumber(busEl.value);
   const status = statusEl.value;
   const bucket = bucketEl.value;
   const generation = generationEl.value;
@@ -2004,7 +2014,7 @@ function openNewCaseForm(){
 }
 
 async function submitNewCase(){
-  const bus = document.getElementById('ncBus').value.trim();
+  const bus = normalizeBusNumber(document.getElementById('ncBus').value);
   const customer = document.getElementById('ncCustomer').value.trim();
   const caseNum = document.getElementById('ncCase').value.trim();
   const etLocation = document.getElementById('ncLoc').value.trim();
