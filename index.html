@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260908110950">
+<meta name="app-build" content="20260908111817">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -1332,6 +1332,7 @@ function saveEditLogEntry(idx){
   const textarea = container ? container.querySelector('.logeditarea') : null;
   if(!textarea) return;
   const entries = parseLogEntries(r.notes);
+  if(!Number.isInteger(idx) || idx < 0 || idx >= entries.length) return;
   entries[idx] = textarea.value;
   commitLogChange(entries.join('\n'));
 }
@@ -1339,8 +1340,9 @@ function saveEditLogEntry(idx){
 function deleteLogEntry(idx){
   const r = CURRENT_RECORD;
   if(!r) return;
-  if(!confirm('Delete this log entry? This cannot be undone.')) return;
   const entries = parseLogEntries(r.notes);
+  if(!Number.isInteger(idx) || idx < 0 || idx >= entries.length) return;
+  if(!confirm('Delete this log entry? This cannot be undone.')) return;
   entries.splice(idx, 1);
   commitLogChange(entries.join('\n'));
 }
