@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260908111817">
+<meta name="app-build" content="20260908193630">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -1112,6 +1112,23 @@ function buildRecallMap(text){
     if(!dateVal) map[bus].done = false;
   });
   return map;
+}
+
+// Renders whatever we have cached from the last successful load, instantly,
+// before the network round-trip to Apps Script even starts. loadData() below
+// still runs right after and silently upgrades the UI once fresh data lands,
+// so this only affects perceived speed on reopen, never data correctness.
+function renderFromCache(){
+  const cached = localStorage.getItem(CACHE_KEY);
+  if(!cached) return false;
+  try{
+    const {main, recall, ts} = JSON.parse(cached);
+    RECORDS = buildRecordsFromCsv(main);
+    RECALL_MAP = buildRecallMap(recall || '');
+    renderStats(); renderFilters(); renderList();
+    setSync('Showing cached data from ' + new Date(ts).toLocaleString() + ' — updating…');
+    return true;
+  } catch(e){ return false; }
 }
 
 async function loadData(showSpinner){
@@ -2364,7 +2381,17 @@ document.getElementById('loginBtn').addEventListener('click', submitLogin);
 document.getElementById('loginPw').addEventListener('keydown', (e) => { if(e.key === 'Enter') submitLogin(); });
 
 if(getAuthToken()){
-  loadData(false).then(ok => { if(ok) afterAuthedBoot(); else if(!document.getElementById('loginGate').classList.contains('show')) showLoginGate(); });
+  // Cache-first: if we have data from a previous session, show it immediately
+  // (no spinner wait) and boot the UI right away. The live fetch below still
+  // runs in parallel and silently replaces it with fresh data when it lands.
+  // afterAuthedBoot() is itself idempotent (AUTHED_BOOTED guard), so calling
+  // it from both branches below is safe.
+  const hadCache = renderFromCache();
+  if(hadCache) afterAuthedBoot();
+  loadData(false).then(ok => {
+    if(ok) afterAuthedBoot();
+    else if(!hadCache && !document.getElementById('loginGate').classList.contains('show')) showLoginGate();
+  });
 } else {
   showLoginGate();
 }
