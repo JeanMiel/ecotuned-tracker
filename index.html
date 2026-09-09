@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260908193630">
+<meta name="app-build" content="20260909132725">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -1190,10 +1190,11 @@ function uniqueLocations(){
 }
 
 function renderStats(){
-  const total = RECORDS.length;
-  const activeN = RECORDS.filter(r=>r.bucket==='active').length;
-  const downN = RECORDS.filter(r=>r.bucket==='active' && r.status==='down').length;
-  const closedN = RECORDS.filter(r=>r.bucket==='closed').length;
+  const scoped = RECORDS.filter(r => matches(r, {ignoreSeg:true}));
+  const total = scoped.length;
+  const activeN = scoped.filter(r=>r.bucket==='active').length;
+  const downN = scoped.filter(r=>r.bucket==='active' && r.status==='down').length;
+  const closedN = scoped.filter(r=>r.bucket==='closed').length;
   document.getElementById('stats').innerHTML = `
     <div class="stat"><div class="n">${activeN}</div><div class="l">Active</div></div>
     <div class="stat"><div class="n" style="color:var(--red)">${downN}</div><div class="l">Down</div></div>
@@ -1233,14 +1234,17 @@ function renderFilters(){
       const val = btn.dataset.val;
       // Toggle off: clicking the already-active filter resets it to "all"
       state[type] = (state[type] === val && val !== 'all') ? 'all' : val;
-      renderFilters(); renderList();
+      renderStats(); renderFilters(); renderList();
     });
   });
 }
 
-function matches(r){
-  if(state.seg === 'active' && r.bucket !== 'active') return false;
-  if(state.seg === 'closed' && r.bucket !== 'closed') return false;
+function matches(r, opts){
+  const ignoreSeg = opts && opts.ignoreSeg;
+  if(!ignoreSeg){
+    if(state.seg === 'active' && r.bucket !== 'active') return false;
+    if(state.seg === 'closed' && r.bucket !== 'closed') return false;
+  }
   if(state.loc !== 'all' && r.loc !== state.loc) return false;
   if(state.status !== 'all' && r.status !== state.status) return false;
   if(state.tech !== 'all' && !r.techs.includes(state.tech)) return false;
@@ -2271,7 +2275,7 @@ document.querySelectorAll('#segmented button').forEach(btn => {
 
 document.getElementById('search').addEventListener('input', (e) => {
   state.search = e.target.value;
-  renderList();
+  renderStats(); renderList();
 });
 
 // Pull-to-refresh: swipe down while at the top of the case list to refresh.
