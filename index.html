@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="app-build" content="20260909132725">
+<meta name="app-build" content="20260922120000">
 <title>Ecotuned CA Tracker</title>
 <style>
   :root{
@@ -356,7 +356,7 @@ const CACHE_KEY = "ecotuned_tracker_cache_v1";
 const AUTHOR_KEY = "ecotuned_tracker_author";
 const AUTH_KEY = "ecotuned_tracker_auth";
 function getAuthToken(){ return localStorage.getItem(AUTH_KEY) || ''; }
-const APP_BUILD = "20260908142238";
+const APP_BUILD = "20260922120000";
 
 // iOS home-screen (standalone) PWAs aggressively cache the app shell (HTML/JS/CSS) and
 // don't automatically pick up a new deploy just because the data refreshes. This checks
@@ -1135,8 +1135,16 @@ async function loadData(showSpinner){
   const btn = document.getElementById('refreshBtn');
   if(showSpinner) btn.classList.add('spinning');
   try{
-    const res = await postToApi({ action: 'getData' });
-    const data = await res.json();
+    let data;
+    for(let attempt = 0; ; attempt++){
+      const res = await postToApi({ action: 'getData' });
+      data = await res.json();
+      if(data.ok && data.main === undefined && attempt < 2){
+        await new Promise(r => setTimeout(r, 500));
+        continue;
+      }
+      break;
+    }
     if(!data.ok){
       if(data.authRequired){
         showLoginGate(RECORDS.length ? 'Session expired — please log in again.' : '');
@@ -1734,7 +1742,7 @@ function openSheet(r, backTo){
       ${r.techs.map(t => `<span class="badge">${t}</span>`).join('')}
     </div>
     ${warrantyFieldHtml(warrantyStatus)}
-    <div class="field"><div class="fl">Initial Complaint</div><div class="fv">${escapeHtml(r.complaint) || '—'}</div></div>
+    
     ${r.lastLocation ? `<div class="field"><div class="fl">Last Known Location</div><div class="fv"><a href="${escapeHtml(r.lastLocation)}" target="_blank" rel="noopener">View on map</a></div></div>` : ''}
     ${r.lastTelemetry ? `<div class="field"><div class="fl">Last Telemetry Contact</div><div class="fv">${escapeHtml(r.lastTelemetry)}</div></div>` : ''}
     ${closedHistory.length ? `<div class="field"><div class="fl">Case History (${closedHistory.length})</div><div class="fv"><div class="history-list">${closedHistory.map(h => `<a href="#" class="history-link" data-idx="${RECORDS.indexOf(h)}"><span class="history-case">Case #${escapeHtml(h.caseNum)} &middot; ${escapeHtml(h.date)}</span><span class="history-complaint">${escapeHtml(h.complaint || 'No complaint logged')}</span></a>`).join('')}</div></div></div>` : ''}
@@ -1792,7 +1800,9 @@ function openSheet(r, backTo){
       <input type="text" id="caseStatusInput" value="${escapeHtml(r.caseStatus)}" placeholder="e.g. Open, Waiting for parts">
       <label>Customer</label>
       <input type="text" id="customerInput" value="${escapeHtml(r.customer === 'Unknown' ? '' : r.customer)}" placeholder="Customer name">
-      <label>Task(s)</label>
+      <label>Initial Complaint</label>
+              <textarea id="complaintInput" placeholder="What's the issue?">${escapeHtml(r.complaint)}</textarea>
+              <label>Task(s)</label>
       <textarea id="tasksInput" placeholder="Next steps">${escapeHtml(r.tasks)}</textarea>
       <label>Assigned tech(s)</label>
       <div class="techrow">
@@ -2010,7 +2020,7 @@ async function submitStatus(){
   const generationEl = document.getElementById('generationSelect');
   const caseStatusEl = document.getElementById('caseStatusInput');
   const customerEl = document.getElementById('customerInput');
-  const tasksEl = document.getElementById('tasksInput');
+  const tasksEl = document.getElementById('tasksInput'); const complaintEl = document.getElementById('complaintInput');
   const msgEl = document.getElementById('statusMsg');
   const btn = document.getElementById('saveStatusBtn');
   const newCaseNum = caseNumEl.value.trim();
@@ -2020,7 +2030,7 @@ async function submitStatus(){
   const generation = generationEl.value;
   const caseStatus = caseStatusEl.value.trim();
   const customer = customerEl.value.trim();
-  const tasks = tasksEl.value.trim();
+  const tasks = tasksEl.value.trim(); const complaint = complaintEl.value.trim();
   const failures = collectFailures();
   const symptom = failures.length ? failures[0].symptom : '';
   const component = failures.length ? failures[0].component : '';
@@ -2054,7 +2064,7 @@ async function submitStatus(){
   msgEl.className = 'notemsg';
   try{
     const res = await postToApi({ action: 'status', rowIndex: r.sheetRow, caseNum: r.caseNum, newCaseNum, bus, status, bucket, generation, caseStatus,
-      customer, tasks, symptom, component, solution, rootCause, failures: JSON.stringify(failures), emigdio, david, jovanni });
+      customer, tasks, complaint, symptom, component, solution, rootCause, failures: JSON.stringify(failures), emigdio, david, jovanni });
     const data = await res.json();
     if(!data.ok) throw new Error(data.error || 'Unknown error');
     r.caseNum = newCaseNum;
@@ -2067,7 +2077,7 @@ async function submitStatus(){
     r.customer = customer || 'Unknown';
     document.getElementById('sheetTitle').textContent = r.bus;
     document.getElementById('sheetSub').textContent = `Case #${r.caseNum} · ${r.customer} · ${r.date}`;
-    r.tasks = tasks;
+    r.tasks = tasks; r.complaint = complaint;
     r.symptom = symptom;
     r.component = component;
     r.solution = solution;
